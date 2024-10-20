@@ -6,7 +6,7 @@ Version: 1.0
 Created: Sep. 17, 2024
 Updated: Sep. 17, 2024
 
-Wrod frequency reference:
+Word frequency reference:
 https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 
 Added extra for test
