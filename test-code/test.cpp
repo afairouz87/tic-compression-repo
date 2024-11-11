@@ -6,8 +6,13 @@
 
 using namespace std;
 
-void TWO_BYTE_CODE_GENERATOR(uint16_t input);
+void TWO_BYTE_CODE_GENERATOR(uint32_t input);
 void THREE_BYTE_CODE_GENERATOR(uint32_t input);
+
+uint8_t Mask_Single_Byte(uint32_t number);
+uint32_t Shift_Left_with_One_Inserted(uint32_t number);
+uint32_t Shift_Left_with_Zero_Inserted(uint32_t number);
+uint32_t Shift_Right_Seven_Positions(uint32_t number);
 
 int main() {
     // // Define multiple uint8_t variables
@@ -86,11 +91,81 @@ int main() {
     return 0;
 }
 
+
+uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
+
 /*
 'TWO_BYTE_CODE_GENERATOR' function:
 Generate a 2-byte code of EPIC algorithm
 */
-void TWO_BYTE_CODE_GENERATOR(uint16_t input)
+void TWO_BYTE_CODE_GENERATOR(uint32_t input)
+{
+    cout << endl << endl;
+    cout << "Testing the 'TWO BYTE CODE' generation in EPIC:\n";
+    cout << "-----------------------------------------------\n\n";
+    cout << "Generate a random number of 14 bits size. (2 sets of 7 bits: 7 x 2 = 14)\n";
+    cout << "This random number will be used later from\nthe order of the word in the dictionary.\n\n";
+
+    cout << "Random number generated:\n";
+    cout << "DICT_ORDER_NUM = " << bitset<32>(input) << endl; // print 'DICT_ORDER_NUM' as 16-bit
+    cout << endl;
+
+    cout << "Generate the mask for the least 7 significant bits (LSb-7):\n";
+    cout << "mask1 = " << bitset<32>(MASK_BYTE) << endl; // print the 'mask1' value as 16 bits 
+    cout << endl;
+    
+    cout << "Generate the 1st BYTE CODE:\n";
+    cout << "* Mask the DICT_ORDER_NUM with mask1 *\n";
+    uint8_t byte1 = Mask_Single_Byte(input); // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
+    cout << "DICT_ORDER_NUM & mask1 = " << bitset<8>(byte1) << endl; // print the LSb masked value of 'DICT_ORDER_NUM'
+    cout << "* shift 'byte1' to the left by 1, and insert '1' as the LSb *\n";
+    byte1 = Shift_Left_with_One_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
+    cout << "BYTE CODE 1 = " << bitset<8>(byte1) << endl; // BYTE CODE 1: 'byte1' has the 1st BYTE CODE 
+    cout << endl;
+    
+    cout << "Generate the 2nd BYTE CODE:";
+    cout << "* shift 'DICT_ORDER_NUM' to the right by 7 positions *\n";
+    uint8_t byte2 = Shift_Right_Seven_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    cout << "DICT_ORDER_NUM shift >> 7 = " << bitset<32>(byte2) << endl; // print the shifted value of 'DICT_ORDER_NUM'
+    cout << endl;
+    
+    byte2 = Shift_Left_with_Zero_Inserted(byte2); // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
+    cout << "BYTE CODE 2 = " << bitset<8>(byte2) << endl; // BYTE CODE 2: 'byte2' has the 2nd BYTE CODE 
+    cout << endl;
+}
+
+
+// To mask the least significant byte
+uint8_t Mask_Single_Byte(uint32_t number){
+    return MASK_BYTE & number;
+}
+
+// Shift a number to the left by one position,
+// and insert '1' as the LSbit.
+uint32_t Shift_Left_with_One_Inserted(uint32_t number){
+    return number << 1 | (0x1);
+}
+
+// Shift a number to the left by one position,
+// and insert '0' as the LSbit.
+uint32_t Shift_Left_with_Zero_Inserted(uint32_t number){
+    return number << 1;
+}
+
+uint32_t Shift_Right_Seven_Positions(uint32_t number){
+    return number >> 7;
+}
+
+
+// Check if the least significant bit is one.
+// If LSbit is '1', then there is another byte code in the sequence.
+// This function is used in the decompression process.
+uint8_t Next_Byte_Available(uint8_t number){
+    return number % 2; // return one or zero.
+}
+
+
+void TWO_BYTE_CODE_GENERATOR_BACKUP(uint16_t input)
 {
     cout << endl << endl;
     cout << "Testing the 'TWO BYTE CODE' generation in EPIC:\n";
