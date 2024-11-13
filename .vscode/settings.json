@@ -2,6 +2,10 @@
     "files.associations": {
         "iostream": "cpp",
         "bitset": "cpp",
-        "ostream": "cpp"
-    }
+        "ostream": "cpp",
+        "vector": "cpp"
+    },
+
+    "editor.fontSize": 14,
+    "window.zoomLevel": 1,
 }
