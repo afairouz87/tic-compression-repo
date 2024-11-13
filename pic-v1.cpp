@@ -4,7 +4,7 @@ Title: Enhanced PIC (EPIC) compression
 Author: Abbas A. Fairouz
 Version: 1.0
 Created: Sep. 17, 2024
-Updated: Nov. 11, 2024
+Updated: Nov. 13, 2024
 
 Word frequency reference:
 https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
@@ -35,6 +35,14 @@ BC3 range: (2^7) + (2^14)  --> (2^7) + (2^14) + (2^21) - 1
 
 BC2 offset: (2^7)
 BC3 offset: (2^7) + (2^14)
+
+*** Comments:
+Dictionary table - implementation options:
+1. Create multiple hash map tables: BC1 hash map, BC2 hash map, ... etc    ??
+2. ..
+
+
+
 */
 
 
