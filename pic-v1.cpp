@@ -13,11 +13,16 @@ https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 
 
 #include <iostream>
+#include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <unordered_map>  // hash table library: (key,value) pair
 #include <string>
 #include <math.h>  // math library
+#include <cctype> // For std::ispunct
+#include <vector>
+#include <bitset>
+#include <iomanip>
 
 #define TWO_SEVEN pow(2,7)
 #define TWO_FOURTEEN pow(2,14)
@@ -273,3 +278,25 @@ uint8_t Next_Byte_Available(uint8_t number){
     return number & (0x1); // return one or zero: mask it with the LSb
 }
 
+
+/*
+A function to check ending of strings with Punctuation characters
+'\0' --> represenets a null character
+*/
+char checkStringEndsWithPunctuation(const string &str) {
+    // Check if the string is empty
+    if (str.empty()) {
+        return '\0'; // Null character for empty string
+    }
+
+    // Get the last character of the string
+    char lastChar = str.back();
+
+    // Check if the last character is a punctuation character
+    if (ispunct(static_cast<unsigned char>(lastChar))) {
+        return lastChar;
+    }
+
+    // Return '\0' if not a punctuation character
+    return '\0';
+}

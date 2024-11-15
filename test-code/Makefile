@@ -2,19 +2,21 @@
 CXX = g++
 # Compiler flags
 CXXFLAGS = -std=c++11
-# Target executable name
-TARGET = test_generate_file
-# Source file
-SRC = test_generate_file.cpp
+# Target executables
+TARGETS = test_generate_file test
+# Source files
+SOURCES = test_generate_file.cpp test.cpp
 
-# Default target
-all: $(TARGET)
+# Default target builds all executables
+all: $(TARGETS)
 
-# Build target
-$(TARGET): $(SRC)
-	$(CXX) $(CXXFLAGS) $(SRC) -o $(TARGET)
+# Rule to build each target from its corresponding source
+test_generate_file: test_generate_file.cpp
+	$(CXX) $(CXXFLAGS) test_generate_file.cpp -o test_generate_file
 
-# Clean target to remove the executable
+test: test.cpp
+	$(CXX) $(CXXFLAGS) test.cpp -o test
+
+# Clean target to remove all executables
 clean:
-	rm -f $(TARGET)
-
+	rm -f $(TARGETS)
