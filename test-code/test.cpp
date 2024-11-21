@@ -1,7 +1,9 @@
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <random> // correct? 
 #include <string>
+#include <vector>
 #include <cctype> // For std::ispunct
 
 #define TWO_SEVEN pow(2,7) - 1
@@ -16,6 +18,10 @@ uint8_t Mask_Single_Byte(uint32_t number);
 uint32_t Shift_Left_with_One_Inserted(uint32_t number);
 uint32_t Shift_Left_with_Zero_Inserted(uint32_t number);
 uint32_t Shift_Right_Seven_Positions(uint32_t number);
+
+// Reading a plain text file functions
+void processFile(const string &filePath);
+vector<string> processLine(const string &line);
 
 char checkStringEndsWithPunctuation(const string &str);
 void checkLinesInFile(const string &filePath);
@@ -33,65 +39,160 @@ int main() {
 
     string filePath = "test1.txt"; // Replace with the path to your file
 
-    checkLinesInFile(filePath);
+    processFile(filePath);
 
-    int tmp = (pow(2,7) - 1);
-    const int TWO_BYTE_MID = tmp << 7;
 
-    int sum=0;
-    for(int i=7; i<=13; i++)
-        sum += pow(2,i);
+
+    // checkLinesInFile(filePath);
+
+    // int tmp = (pow(2,7) - 1);
+    // const int TWO_BYTE_MID = tmp << 7;
+
+    // int sum=0;
+    // for(int i=7; i<=13; i++)
+    //     sum += pow(2,i);
     
-    uint8_t number = pow(2,7)-1;
-    cout << "2^7 + ... + 2^13 = " << sum << endl;
-    cout << "2^7 + ... + 2^13 = " << bitset<16>(sum) << endl;
-    cout << "using sheft operation:\n2^7 + ... + 2^13 = " << (number << 7) << endl;
-    cout << "using define:\n2^7 + ... + 2^13 = " << TWO_BYTE_MID << endl;
+    // uint8_t number = pow(2,7)-1;
+    // cout << "2^7 + ... + 2^13 = " << sum << endl;
+    // cout << "2^7 + ... + 2^13 = " << bitset<16>(sum) << endl;
+    // cout << "using sheft operation:\n2^7 + ... + 2^13 = " << (number << 7) << endl;
+    // cout << "using define:\n2^7 + ... + 2^13 = " << TWO_BYTE_MID << endl;
 
-    uint8_t number2 = pow(2,7)-1;
+    // uint8_t number2 = pow(2,7)-1;
 
     
-    //uint16_t input_number = pow(2,13) + 7854; // random number
-    uint16_t input_number = pow(2,14) - 2345; // random number
-    TWO_BYTE_CODE_GENERATOR(input_number);
+    // //uint16_t input_number = pow(2,13) + 7854; // random number
+    // uint16_t input_number = pow(2,14) - 2345; // random number
+    // TWO_BYTE_CODE_GENERATOR(input_number);
 
-    cout << endl << endl;
+    // cout << endl << endl;
     
-    uint32_t input_number2 = pow(2,21) - 45678; // random number
-    THREE_BYTE_CODE_GENERATOR(input_number2);
+    // uint32_t input_number2 = pow(2,21) - 45678; // random number
+    // THREE_BYTE_CODE_GENERATOR(input_number2);
 
 
-    /*
-    Test Punctuation Characters
-    */
-    string testStr1 = "Hello, world!";
+    // /*
+    // Test Punctuation Characters
+    // */
+    // string testStr1 = "Hello, world!";
     
-    char result1 = checkStringEndsWithPunctuation(testStr1);
+    // char result1 = checkStringEndsWithPunctuation(testStr1);
     
-    // Display the results
-    if (result1 != '\0') {
-        cout << "String 1 ends with punctuation: " << result1 << endl;
-    } else {
-        cout << "String 1 does not end with punctuation." << endl;
-    }
+    // // Display the results
+    // if (result1 != '\0') {
+    //     cout << "String 1 ends with punctuation: " << result1 << endl;
+    // } else {
+    //     cout << "String 1 does not end with punctuation." << endl;
+    // }
 
 
-    /*
-    Test writing multiple lines of plain text 
-    to a text file, by adding newline characters after each string.
-    */
-    string outputFilePath = "output_text.txt"; // Replace with your desired file path
+    // /*
+    // Test writing multiple lines of plain text 
+    // to a text file, by adding newline characters after each string.
+    // */
+    // string outputFilePath = "output_text.txt"; // Replace with your desired file path
 
-    string line1 = "Hello, world! This is a single string.";
-    string line2 = "This is a second line.";
+    // string line1 = "Hello, world! This is a single string.";
+    // string line2 = "This is a second line.";
 
-    writeStringToFile(outputFilePath, line1);
-    writeStringToFile(outputFilePath, line2);
+    // writeStringToFile(outputFilePath, line1);
+    // writeStringToFile(outputFilePath, line2);
 
-    cout << "String written to " << outputFilePath << " with a newline at the end." << endl;
+    // cout << "String written to " << outputFilePath << " with a newline at the end." << endl;
+
 
     return 0;
 }
+
+vector<string> processLine(const string &line) {
+    vector<string> result;
+    string word;
+    bool startsWithUppercase = false; // Flag to indicate if the word starts with an uppercase letter
+
+    for (size_t i = 0; i < line.size(); ++i) {
+        char ch = line[i];
+
+        if (isalnum(ch)) { // If the character is alphanumeric, build the word
+            if (word.empty() && isupper(ch)) {
+                startsWithUppercase = true; // Set the flag if the first character is uppercase
+                //cout << "Uppercase character..\n"; // for testing... 
+            }
+            word += ch;
+        } 
+        //else if (ch == '\'') { // Handle apostrophes
+        else if (ch == '\'' || (i + 2 <= line.size() && line.substr(i, 3) == "’")) {
+            if (!word.empty()) {
+                result.push_back(word);
+                word.clear();
+            }
+            result.push_back("'");
+
+            // Check for 's' after the apostrophe
+            if (i + 1 < line.size() && line[i + 1] == 's') {
+                result.push_back("s");
+                ++i; // Skip the 's'
+            }
+        } else if (ispunct(ch)) { // Handle punctuation
+            if (!word.empty()) {
+                result.push_back(word);
+                word.clear();
+            }
+            result.push_back(string(1, ch)); // Add punctuation as a separate string
+        } else if (isspace(ch)) { // Handle spaces
+            if (!word.empty()) {
+                result.push_back(word);
+                word.clear();
+            }
+        }
+
+        startsWithUppercase = false;
+    }
+
+    // Add the last word if there is any
+    if (!word.empty()) {
+        result.push_back(word);
+    }
+
+    return result;
+}
+
+// Function to read a file line by line and process each line
+void processFile(const string &filePath) {
+    ifstream file(filePath); // Open the file
+    if (!file) {
+        cerr << "Error opening file: " << filePath << endl;
+        return;
+    }
+
+    string line;
+    while (getline(file, line)) { // Read each line
+        vector<string> tokens = processLine(line); // Process the line
+
+        // Output the processed tokens
+        // for (const auto &token : tokens) {
+        //     cout << "\"" << token << "\" ";
+        // }
+        for (size_t i = 0; i < tokens.size(); ++i) {
+            //cout << "\"" << tokens[i] << "\" "; 
+            cout << tokens[i] << endl;
+        }
+        cout << endl;
+    }
+
+    file.close(); // Close the file
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)

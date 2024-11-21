@@ -8,7 +8,8 @@
 using namespace std;
 
 void printBinaryFile(const string &filePath);
-void writeBinaryFile(const string &filePath, const vector<uint8_t> &data);
+void writeBinaryFile(ofstream *file, const vector<uint8_t> &data);
+void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data);
 
 int main() {
     // Define multiple uint8_t variables
@@ -28,7 +29,7 @@ int main() {
     // Open a binary file to write the concatenated bytes
     string outputFilePath = "output.bin";  // Replace with your binary file path
     
-    writeBinaryFile(outputFilePath, byteBuffer);
+    writeBinaryFileOLD(outputFilePath, byteBuffer);
     
     // ofstream outputFile(outputFilePath, ios::binary);
 
@@ -71,8 +72,19 @@ void printBinaryFile(const string &filePath) {
     cout << endl;
 }
 
-void writeBinaryFile(const string &filePath, const vector<uint8_t> &data) {
-    ofstream file(filePath, ios::binary);
+void writeBinaryFile(ofstream *file, const vector<uint8_t> &data) {
+    if (!file || !file->is_open()) {
+        cerr << "Error: File pointer is null or file is not open." << endl;
+        return;
+    }
+
+    // Write bytes to the binary file
+    file->write(reinterpret_cast<const char *>(data.data()), data.size());
+    cout << "Bytes written successfully." << endl;
+}
+
+void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data) {
+    ofstream file(filePath, ios::binary | ios::app);
     if (!file) {
         cerr << "Error opening file for writing: " << filePath << endl;
         return;
