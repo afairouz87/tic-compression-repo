@@ -421,6 +421,8 @@ vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input)
     uint8_t byte3 = Shift_Right_Seven_Positions(input_shitf1); // shift 'DICT_ORDER_NUM' to the right by 7 positions
     byte3 = byte3 << 1; // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
     codeWord.push_back(byte3);
+
+    return codeWord;
 }
 
 // To mask the least significant byte
