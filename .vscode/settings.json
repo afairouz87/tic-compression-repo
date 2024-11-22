@@ -3,7 +3,8 @@
         "iostream": "cpp",
         "bitset": "cpp",
         "ostream": "cpp",
-        "vector": "cpp"
+        "vector": "cpp",
+        "string": "cpp"
     },
 
     "editor.fontSize": 14,

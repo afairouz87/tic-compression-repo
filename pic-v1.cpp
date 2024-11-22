@@ -13,7 +13,7 @@ https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 
 
 #include <iostream>
-#include <cstdint>
+#include <cstdint> // For uint8_t
 #include <fstream>
 #include <sstream>
 #include <unordered_map>  // hash table library: (key,value) pair
@@ -23,6 +23,8 @@ https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 #include <vector>
 #include <bitset>
 #include <iomanip>
+#include <windows.h> // for sleep function
+
 
 using namespace std;
 
@@ -73,7 +75,8 @@ the reserved codeWords (space, newline, nextCapital).
 
 uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
 
-uint8_t Build_Dictionary_Table();
+uint8_t Build_Dictionary_Table_Compression();
+uint8_t Build_Dictionary_Table_Decompression();
 vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
@@ -84,12 +87,14 @@ uint32_t Shift_Left_with_Zero_Inserted(uint32_t number);
 uint32_t Shift_Right_Seven_Positions(uint32_t number);
 
 uint8_t Compression_Function();
+uint8_t Decompression_Function();
 
 // Reading a plain text file functions
 uint8_t processFile(const string &filePath);
+vector<string> processLineChar(const string &line); // return a vector of strings
 //vector<string> processLineChar(const string &line, ofstream *file); // return a vector of strings
-vector<uint8_t> processLineChar(const string &line, ofstream *file); // return a vector of strings
-void convertStringToCodeWord(const vector<string> &strings);
+//vector<uint8_t> processLineChar(const string &line, ofstream *file); // return a vector of strings
+vector<uint8_t> convertStringToCodeWord(vector<string> word);
 uint8_t checkNumberOfCodeByte(int serial);
 
 char checkStringEndsWithPunctuation(const string &str);
@@ -101,6 +106,7 @@ void writeStringToFile(const string &filePath, const string &line);
 void writeBinaryFile(ofstream *file, const vector<uint8_t> &data);
 void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data);
 
+void printBinaryFile(const string &filePath);
 
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, int> dictMapWord; // Compression Hash Table
@@ -111,10 +117,18 @@ unordered_map<int, string> dictMapCode; // Decompression Hash Table
 string dictFilename = "dict.txt"; 
 
 // input plaint text file
-//string inputFilename = "input_file.txt"; 
-string inputFilename = "test1.txt"; 
-string outputFilePath = "outputCompressed";
+//string inputFileNameText = "input_file.txt"; 
+// Compression
+string inputFileNameText = "test1.txt"; 
+string outputFileNameBin = "output.bin";
 
+// Decompression
+string inputFileNameBin = "output.bin"; 
+string outputFileNameText = "output.txt";
+
+// *********************************************
+//            Main Function
+// *********************************************
 int main() {
 
     // **** TESTs ****
@@ -126,7 +140,7 @@ int main() {
     // Compression
     // Building the dictionary hash table
     cout << "Building the dictionary hash table.." << endl;
-    if(Build_Dictionary_Table()==0)
+    if(Build_Dictionary_Table_Compression()==0)
         cout << "The dictionary hash table has been built successfully." << endl;
     else
         cout << "Error in building the dictionary hash table!" << endl;
@@ -136,6 +150,10 @@ int main() {
     else
         cout << "Error in running the compression function!" << endl;
 
+    printBinaryFile(outputFileNameBin);
+
+    cout << "Sleep for one second..\n";
+    sleep(1);
 
     return 0;
 } // main function
@@ -145,11 +163,44 @@ int main() {
 /* OTHER FUNCTIONS */
 
 
-uint8_t Build_Dictionary_Table(){
+uint8_t Build_Dictionary_Table_Decompression(){
     // Variables to store each line and word
     string line, word;
     int serial = 0; // Start serializing from 0
-    int tmpSerial;
+
+    // Open the Text file
+    ifstream file(dictFilename);
+
+    // Check if the file is open
+    if (!file.is_open()) {
+        cerr << "Error opening file: " << dictFilename << endl;
+        return 1;
+    }
+
+    // Read the file line by line
+    while (getline(file, line)) {
+        stringstream ss(line); // Use a stringstream to parse the line
+        string temp; // To hold the "count" column which we will ignore
+        
+        // Get the word from the line
+        // getline(ss, word, ','); 
+        // getline(ss, temp, ','); // Ignore the second column (count)
+        getline(ss, word, '\n'); 
+        
+        dictMapCode[serial] = word;
+        serial++;
+    }
+
+    // Close the file after reading
+    file.close();
+
+    return 0;
+}
+
+uint8_t Build_Dictionary_Table_Compression(){
+    // Variables to store each line and word
+    string line, word;
+    int serial = 0; // Start serializing from 0
 
     // Open the Text file
     ifstream file(dictFilename);
@@ -177,14 +228,15 @@ uint8_t Build_Dictionary_Table(){
     // Close the file after reading
     file.close();
 
-    cout << "\nTotal words = " << serial-1 << "\n";
-    cout << "The hash map has been generated successfully!\n\n";
+    // ** for testing ... **
+    // cout << "\nTotal words = " << serial-1 << "\n";
+    // cout << "The hash map has been generated successfully!\n\n";
 
-    // Test the hash map
-    cout << "Test the hash map:\n";
-    string tmp_word = "wild";
-    cout << "Word (" << tmp_word << ") has an order of: " << dictMapWord[tmp_word] << "\n";
-    cout << "\n\n";
+    // // Test the hash map
+    // cout << "Test the hash map:\n";
+    // string tmp_word = "wild";
+    // cout << "Word (" << tmp_word << ") has an order of: " << dictMapWord[tmp_word] << "\n";
+    // cout << "\n\n";
 
     return 0;
 }
@@ -192,25 +244,36 @@ uint8_t Build_Dictionary_Table(){
 
 // Function to read a file line by line and process each line
 uint8_t Compression_Function() {
-    ifstream inFile(inputFilename); // Open the file
+    ifstream inFile(inputFileNameText); // Open the file
     if (!inFile) {
-        cerr << "Error opening file: " << inputFilename << endl;
+        cerr << "Error opening file: " << inputFileNameText << endl;
         return -1;
     }
 
-    ofstream outFile(inputFilename, ios::binary | ios::app);
+    // Open the output file in binary mode and in append mode
+    ofstream outFile(outputFileNameBin, ios::binary | ios::app); 
     if (!outFile) {
         cerr << "Error: Could not open the file." << endl;
         return 1;
     }
 
+    vector<string> tokens;
+    vector<uint8_t> lineCodeWords;
+    const char* buffer;
+    size_t bufferSize;
     string line;
+
     while (getline(inFile, line)) { // Read each line
         //vector<string> tokens = processLineChar(line, &outFile); // Process the line
-        vector<uint8_t> tokens = processLineChar(line, &outFile); // Process the line
-        //convertStringToCodeWord(tokens); // generate the codeWord and print it to the output binary file
+        tokens = processLineChar(line); // Process the line
+        //vector<uint8_t> tokens = processLineChar(line, &outFile); // Process the line
+        lineCodeWords = convertStringToCodeWord(tokens); // generate the codeWord and print it to the output binary file
 
-        outFile.write(reinterpret_cast<const char*>(tokens.data()), tokens.size());
+        buffer = reinterpret_cast<const char*>(lineCodeWords.data());
+        bufferSize = lineCodeWords.size();
+        outFile.write(buffer, bufferSize);
+
+        //outFile.write(reinterpret_cast<const char*>(lineCodeWords.data()), lineCodeWords.size());
 
         // // ** Output the processed tokens **
         // // for (const auto &token : tokens) {
@@ -226,21 +289,71 @@ uint8_t Compression_Function() {
     return 0;
 }
 
+// Abbas reached here...
+/*
+You need to think about how to read byte by byte.
+Then, send the vector of bytes to parse them to serial number.
+After that, you can check the hash table for the text word in
+your dictionary hash table.
+*/
+uint8_t Decompression_Function(){
+    vector<uint8_t> byteCodes;
+    uint32_t serial;
 
-/* 
-Abbas reached here.. 
-You need to think on how to call byte generator 
+    // Open the file in binary mode
+    ifstream inFile(outputFileNameBin, ios::binary);
+    if (!inFile) {
+        cerr << "Error: Could not open file " << filePath << " for reading." << endl;
+        return;
+    }
+
+    uint8_t byte; // Variable to store each byte
+    size_t byteIndex = 0; // Optional: Index of the byte being read
+
+    cout << "Reading file byte by byte:" << endl;
+
+    // Read the file byte by byte
+    while (inFile.read(reinterpret_cast<char*>(&byte), sizeof(byte))) {
+        cout << "Byte " << byteIndex << ": 0x" << hex << static_cast<int>(byte) << endl;
+        serial = readCodeWords(byteCodes);
+        byteIndex++;
+    }
+
+    if (inFile.eof()) {
+        cout << "End of file reached." << endl;
+    } else if (inFile.fail()) {
+        cerr << "Error: Failed to read the file." << endl;
+    }
+
+    inFile.close();
+
+    return 0;
+}
+
+unint32_t readCodeWords(vector<uint8_t> bytes){
+    unint32_t serial;
+
+    return serial;
+}
+
+/*  
+You need to think about on how to call byte generator 
 based on the serial from wordMap, or special cases,
 such as new line, space, next Capital, and puctuation.
+
+We can assign a code for the space: let's say '127' (0xff),
+to the vector of tokens of strings.
+In the decompression, we can infer the space vy it code '127' (0xff).
 */
 //vector<string> processLineChar(const string &line, ofstream *file) {
-vector<uint8_t> processLineChar(const string &line, ofstream *file) {
+vector<string> processLineChar(const string &line) {
+//vector<uint8_t> processLineChar(const string &line, ofstream *file) {
     vector<string> result;
     vector<uint8_t> lineCodeWords;
-    vector<uint8_t> codeWords;
     string word;
     bool startsWithUppercase = false; // Flag to indicate if the word starts with an uppercase letter
 
+    // We might remove these variables
     uint8_t byteCode;
     uint8_t byteCode1, byteCode2, byteCode3;
     int serial;
@@ -251,45 +364,38 @@ vector<uint8_t> processLineChar(const string &line, ofstream *file) {
 
         if (isalnum(ch)) { // If the character is alphanumeric, build the word
             if (word.empty() && isupper(ch)) {
+                result.push_back(string(1, 0xff)); // '0xff' represents that the next word starts with an uppercase character. 
                 startsWithUppercase = true; // Set the flag if the first character is uppercase
                 //cout << "Uppercase character..\n"; // for testing... 
             }
+            ch = tolower(ch);
             word += ch;
         } 
         //else if (ch == '\'') { // Handle apostrophes
         else if (ch == '\'' || (i + 2 <= line.size() && line.substr(i, 3) == "’")) {
             if (!word.empty()) {
                 result.push_back(word);
-                serial = dictMapWord[word] + CODE_WORD_OFFSET;
-                codeWords.clear();
                 word.clear();
             }
             result.push_back("'");
-            codeWords.clear();
 
             // Check for 's' after the apostrophe
             if (i + 1 < line.size() && line[i + 1] == 's') {
                 result.push_back("s");
-                codeWords.clear();
                 ++i; // Skip the 's'
             }
         } else if (ispunct(ch)) { // Handle punctuation
             if (!word.empty()) {
                 result.push_back(word);
-                codeWords.clear();
                 word.clear();
             }
             result.push_back(string(1, ch)); // Add punctuation as a separate string
         } else if (isspace(ch)) { // Handle spaces
             if (!word.empty()) {
                 result.push_back(word);
-                serial = dictMapWord[word] + CODE_WORD_OFFSET;
-                codeRange = checkNumberOfCodeByte(serial);
-                codeWords.clear();
                 word.clear();
             }
-
-            //result.push_back(string(1, 127)); // Add 127 as a separate string -- SPACE
+            result.push_back(string(1, ' ')); // Add space 127 (0xff) as a separate string -- SPACE
         }
 
         startsWithUppercase = false;
@@ -298,11 +404,9 @@ vector<uint8_t> processLineChar(const string &line, ofstream *file) {
     // Add the last word if there is any
     if (!word.empty()) {
         result.push_back(word);
-        codeWords.clear();
     }
 
-    //return result;
-    return codeWords;
+    return result; // return a vector of separate strings
 }
 
 uint8_t checkNumberOfCodeByte(int serial){
@@ -321,11 +425,14 @@ uint8_t checkNumberOfCodeByte(int serial){
     return codeRange;
 }
 
-void convertStringToCodeWord(vector<string> word) {
+vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
 
-    uint8_t byteCode;
-    uint8_t byteCode1, byteCode2, byteCode3;
-    int serial;
+    vector<uint8_t> lineCodeWords;
+    vector<uint8_t> byteCodes;
+    // uint8_t byteCode;
+    // uint8_t byteCode1, byteCode2, byteCode3;
+    uint32_t serial = 0, inputNumber = 0;
+    string word;
 
     //serial += CODE_WORD_OFFSET + dictMapWord[word];
     /* 
@@ -336,33 +443,59 @@ void convertStringToCodeWord(vector<string> word) {
     */
     //ofstream file(outputFilePath, ios::binary | ios::app); // open the output file
 
-    
+
     /*
     *** Generate T0 ***
     Have reserved values:
     1) Space                => 0x0
-    2) New line             => 0x1
-    3) Next Capital letter  => 0x2
+    2) New line             => 0x1  --> in EPIC format, shift left by 1 => 0x2
+    3) Next Capital letter  => 0x2 --> in EPIC format, shift left by 1 => 0x4
     */
 
-    //serial = dictMapWord[word];
-    if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding 
-        
-        
-    }
-    else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
-        //input = serial - TWO_BYTE_OFFSET;
 
-    }
-    else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){
-        //input = serial - THREE_BYTE_OFFSET;
-    }
-    //else{
-        // Add word to the map with the current serial number
-        //dictMapWord[word] = serial;
-    //}
+    for (size_t i = 0; i < wordsSet.size(); ++i) {
+        word = wordsSet[i];
 
+        //serial = dictMapWord[word];
+        if(!word.empty() && static_cast<uint8_t>(word[0]) == 0x20){ // compare with SPACE in ASCII
+            lineCodeWords.push_back(SPACE_CODE); // SPACE codeWord
+        }
+        else if(!word.empty() && static_cast<uint8_t>(word[0]) == 0xFF){ // compare with Next Uppercase character code (0xFF)
+            lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_CAPITAL_CODE)); // next uppercase letter codeWord
+        }
+        else{
+            //cout << "String at index " << i << ": " << wordsSet[i] << endl;
+            serial = dictMapWord[word]; // read th evalue of the word in the dictionary hash table
+            cout << word << " has a serial of " << serial << endl;
+
+            if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding
+                inputNumber = serial + CODE_WORD_OFFSET; // add the offset if the reserved codeWords (i.e. space, newline, ..)
+                byteCodes = ONE_BYTE_CODE_GENERATOR(inputNumber); // generate a single byte codeWord
+            }
+            else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
+                inputNumber = serial - TWO_BYTE_OFFSET;
+                byteCodes = TWO_BYTE_CODE_GENERATOR(inputNumber); // generate a two bytes codeWord
+            }
+            else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){
+                inputNumber = serial - THREE_BYTE_OFFSET;
+                byteCodes = THREE_BYTE_CODE_GENERATOR(inputNumber); // generate a three bytes codeWord
+            }
+            else{
+                // Add word to the map with the current serial number
+                //dictMapWord[word] = serial;
+            }
+
+            // Push the byteCodes to the lineCodeWords vector
+            lineCodeWords.insert(lineCodeWords.end(), byteCodes.begin(), byteCodes.end());
+            byteCodes.clear();
+
+        } // end of else for special codeWords
+        
+    } // end of the for loop    
     
+    lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEW_LINE_CODE)); // new line codeWord
+
+    return lineCodeWords;
 }
 
 /*
@@ -409,7 +542,7 @@ vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input)
 {
     vector<uint8_t> codeWord;
 
-    uint16_t byte1 = Mask_Single_Byte(input); // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
+    uint8_t byte1 = Mask_Single_Byte(input); // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
     byte1 = Shift_Left_with_One_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte1);
 
@@ -563,3 +696,22 @@ void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data) {
     cout << "Data written to " << filePath << " successfully." << endl;
 }
 
+// Print the hex code of the binary file for testing.
+void printBinaryFile(const string &filePath) {
+    ifstream file(filePath, ios::binary);  // Open the file in binary mode
+    if (!file) {
+        cerr << "Error opening file: " << filePath << endl;
+        return;
+    }
+
+    // Read the file contents into a vector of uint8_t
+    vector<uint8_t> buffer((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+    file.close();  // Close the file after reading
+
+    cout << "Binary contents of " << filePath << ":" << endl;
+    for (size_t i = 0; i < buffer.size(); ++i) {
+        //cout << bitset<8>(buffer[i]) << " ";  // Print each byte as an 8-bit binary number
+        cout << hex << static_cast<int>(buffer[i]) << " ";  // Print each byte as HEX number
+    }
+    cout << endl;
+}

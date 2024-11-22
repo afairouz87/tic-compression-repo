@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 #include <cctype> // For std::ispunct
+#include <iomanip> // For hex formatting
+#include <cstdint> // For uint8_t
 
 #define TWO_SEVEN pow(2,7) - 1
 #define TWO_FOURTEEN pow(2,14) - 1
@@ -30,6 +32,35 @@ bool endsWithNewline(const string &str);
 void writeStringToFile(const string &filePath, const string &line);
 
 int main() {
+
+    string s1 = " ";
+    
+    cout << "length is " << s1.size() << endl;
+    if(s1.size() == 1)
+        cout << "length is one\n";
+
+    uint8_t byte = static_cast<uint8_t> (s1[0]);
+    cout << "value of s1 (DEC) is " << static_cast<int>(byte) << endl;
+    cout << "value of s1 (HEX) is " << hex << setw(2) << setfill('0') << static_cast<int>(byte) << endl;
+    
+    // // Save a single space in a string
+    // string singleSpace = " ";
+
+    // if (!singleSpace.empty()) {
+    //     // Cast the first character to uint8_t
+    //     uint8_t byteValue = static_cast<uint8_t>(singleSpace[0]);
+
+    //     // Print the value in decimal and hexadecimal
+    //     cout << "Decimal value: " << static_cast<int>(byteValue) << endl;
+    //     cout << "Hexadecimal value: 0x" 
+    //          << hex << setw(2) << setfill('0') << static_cast<int>(byteValue) << endl;
+    // } else {
+    //     cout << "The string is empty." << endl;
+    // }
+
+
+
+
     // // Define multiple uint8_t variables
     // uint32_t number1 = 0x1a; // Example byte value 1
     // uint32_t number2 = 0x03; // Example byte value 1
@@ -37,9 +68,8 @@ int main() {
     // cout << "number2 = " << int(number2) << "\n";
     // cout << "number1 & number2 = " << hex << (number1 & number2) << "\n";
 
-    string filePath = "test1.txt"; // Replace with the path to your file
-
-    processFile(filePath);
+    //string filePath = "test1.txt"; // Replace with the path to your file
+    //processFile(filePath);
 
 
 
