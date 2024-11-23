@@ -23,8 +23,9 @@ https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 #include <vector>
 #include <bitset>
 #include <iomanip>
-#include <windows.h> // for sleep function
 
+#include <chrono> // for sleep
+#include <thread>
 
 using namespace std;
 
@@ -67,11 +68,11 @@ the reserved codeWords (space, newline, nextCapital).
 
 #define TWO_BYTE_OFFSET pow(2,7)
 #define THREE_BYTE_OFFSET pow(2,7) + pow(2,14)
-#define ONE_BYTE_BOUND pow(2,7) - 1
+#define ONE_BYTE_BOUND pow(2,7)
 #define ONE_BYTE_LOWER_BOUND 0
-#define TWO_BYTE_BOUND pow(2,7) + pow(2,14) - 1
+#define TWO_BYTE_BOUND pow(2,7) + pow(2,14) 
 //#define TWO_BYTE_MID (pow(2,7)-1) << 7
-#define THREE_BYTE_BOUND pow(2,7) + pow(2,14) + pow(2,21) - 1 
+#define THREE_BYTE_BOUND pow(2,7) + pow(2,14) + pow(2,21)
 
 uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
 
@@ -108,9 +109,12 @@ void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data);
 
 void printBinaryFile(const string &filePath);
 
+uint32_t readCodeWords(vector<uint8_t> bytes);
+uint32_t concatenateBytes(uint32_t final, uint32_t tmp);
+
 // Declare the unordered_map to store the word and serialized integer
-unordered_map<string, int> dictMapWord; // Compression Hash Table
-unordered_map<int, string> dictMapCode; // Decompression Hash Table
+unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
+unordered_map<uint32_t, string> dictMapCode; // Decompression Hash Table
 
 // File path of the CSV file
 //string dictFilename = "unigram_freq.csv"; 
@@ -139,9 +143,9 @@ int main() {
 
     // Compression
     // Building the dictionary hash table
-    cout << "Building the dictionary hash table.." << endl;
+    cout << "Building the dictionary hash table from compression.." << endl;
     if(Build_Dictionary_Table_Compression()==0)
-        cout << "The dictionary hash table has been built successfully." << endl;
+        cout << "The dictionary hash table from compression has been built successfully." << endl;
     else
         cout << "Error in building the dictionary hash table!" << endl;
 
@@ -153,7 +157,19 @@ int main() {
     printBinaryFile(outputFileNameBin);
 
     cout << "Sleep for one second..\n";
-    sleep(1);
+
+    this_thread::sleep_for(chrono::seconds(1));
+
+    cout << "Building the dictionary hash table for decompression.." << endl;
+    if(Build_Dictionary_Table_Decompression()==0)
+        cout << "The dictionary hash tablefor decompression has been built successfully." << endl;
+    else
+        cout << "Error in building the dictionary hash table!" << endl;
+
+    if(Decompression_Function()==0)
+        cout << "The decompression function is successful." << endl;
+    else
+        cout << "Error in running the decompression function!" << endl;
 
     return 0;
 } // main function
@@ -166,7 +182,7 @@ int main() {
 uint8_t Build_Dictionary_Table_Decompression(){
     // Variables to store each line and word
     string line, word;
-    int serial = 0; // Start serializing from 0
+    uint32_t serial = CODE_WORD_OFFSET; // Start serializing from 0
 
     // Open the Text file
     ifstream file(dictFilename);
@@ -194,13 +210,23 @@ uint8_t Build_Dictionary_Table_Decompression(){
     // Close the file after reading
     file.close();
 
+    // ** for testing ... **
+    cout << "\nTotal words = " << serial-1 << "\n";
+    cout << "The hash map has been generated successfully!\n\n";
+
+    // Test the hash map
+    cout << "Test the hash map:\n";
+    uint32_t tmpSerial = 127;
+    cout << "Serial (" << tmpSerial << ") has a word of: " << dictMapCode[tmpSerial] << "\n";
+    cout << "\n\n";
+
     return 0;
 }
 
 uint8_t Build_Dictionary_Table_Compression(){
     // Variables to store each line and word
     string line, word;
-    int serial = 0; // Start serializing from 0
+    uint32_t serial = CODE_WORD_OFFSET; // Start serializing from 3
 
     // Open the Text file
     ifstream file(dictFilename);
@@ -289,53 +315,6 @@ uint8_t Compression_Function() {
     return 0;
 }
 
-// Abbas reached here...
-/*
-You need to think about how to read byte by byte.
-Then, send the vector of bytes to parse them to serial number.
-After that, you can check the hash table for the text word in
-your dictionary hash table.
-*/
-uint8_t Decompression_Function(){
-    vector<uint8_t> byteCodes;
-    uint32_t serial;
-
-    // Open the file in binary mode
-    ifstream inFile(outputFileNameBin, ios::binary);
-    if (!inFile) {
-        cerr << "Error: Could not open file " << filePath << " for reading." << endl;
-        return;
-    }
-
-    uint8_t byte; // Variable to store each byte
-    size_t byteIndex = 0; // Optional: Index of the byte being read
-
-    cout << "Reading file byte by byte:" << endl;
-
-    // Read the file byte by byte
-    while (inFile.read(reinterpret_cast<char*>(&byte), sizeof(byte))) {
-        cout << "Byte " << byteIndex << ": 0x" << hex << static_cast<int>(byte) << endl;
-        serial = readCodeWords(byteCodes);
-        byteIndex++;
-    }
-
-    if (inFile.eof()) {
-        cout << "End of file reached." << endl;
-    } else if (inFile.fail()) {
-        cerr << "Error: Failed to read the file." << endl;
-    }
-
-    inFile.close();
-
-    return 0;
-}
-
-unint32_t readCodeWords(vector<uint8_t> bytes){
-    unint32_t serial;
-
-    return serial;
-}
-
 /*  
 You need to think about on how to call byte generator 
 based on the serial from wordMap, or special cases,
@@ -353,12 +332,6 @@ vector<string> processLineChar(const string &line) {
     string word;
     bool startsWithUppercase = false; // Flag to indicate if the word starts with an uppercase letter
 
-    // We might remove these variables
-    uint8_t byteCode;
-    uint8_t byteCode1, byteCode2, byteCode3;
-    int serial;
-    uint8_t codeRange;
-
     for (size_t i = 0; i < line.size(); ++i) {
         char ch = line[i];
 
@@ -368,7 +341,7 @@ vector<string> processLineChar(const string &line) {
                 startsWithUppercase = true; // Set the flag if the first character is uppercase
                 //cout << "Uppercase character..\n"; // for testing... 
             }
-            ch = tolower(ch);
+            ch = tolower(ch); // set the uppercase character to lowercase character.
             word += ch;
         } 
         //else if (ch == '\'') { // Handle apostrophes
@@ -469,7 +442,7 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
             cout << word << " has a serial of " << serial << endl;
 
             if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding
-                inputNumber = serial + CODE_WORD_OFFSET; // add the offset if the reserved codeWords (i.e. space, newline, ..)
+                inputNumber = serial; // add the offset if the reserved codeWords (i.e. space, newline, ..)
                 byteCodes = ONE_BYTE_CODE_GENERATOR(inputNumber); // generate a single byte codeWord
             }
             else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
@@ -497,6 +470,160 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
 
     return lineCodeWords;
 }
+
+
+// Abbas reached here...
+/*
+You need to think about how to read byte by byte.
+Then, send the vector of bytes to parse them to serial number.
+After that, you can check the hash table for the text word in
+your dictionary hash table.
+*/
+uint8_t Decompression_Function(){
+    vector<uint8_t> byteCodes;
+    uint32_t tmpSerial = 0, finalSerial = 0;
+    string word;
+
+    // Open the file in binary mode
+    ifstream inFile(outputFileNameBin, ios::binary);
+    if (!inFile) {
+        cerr << "Error: Could not open file " << outputFileNameBin << " for reading." << endl;
+        return -1;
+    }
+
+    uint8_t nextByte; // Variable to store each byte
+    size_t byteIndex = 0; // Optional: Index of the byte being read
+    bool NEXT_CAP = false;
+    int serial = 0;
+
+    char byte;
+    cout << "Reading file byte by byte:" << endl;
+
+    // Read the file byte by byte
+    //while (inFile.read(reinterpret_cast<char*>(&byte), sizeof(byte))) {
+    while (inFile.read(&byte, 1)) {
+        //cout << "Byte " << byteIndex << ": 0x" << hex << static_cast<uint32_t>(byte) << endl;
+        //serial = readCodeWords(byteCodes);
+        tmpSerial = static_cast<uint8_t>(byte);
+        nextByte = tmpSerial % 2;
+        //cout << "tmpSerial = " << tmpSerial << endl;
+        tmpSerial = tmpSerial >> 1;
+        //cout << "tmpSerial >> 1 = " << tmpSerial << endl;
+        
+        
+        if(nextByte==0){
+            // Finalize the concatenated serial number
+            finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, tmpSerial));
+            serial = static_cast<uint32_t>(finalSerial);
+            //cout << "Serial = " << dec << static_cast<uint32_t>(serial) << endl;
+
+            if(finalSerial == 0){ // space
+            cout << "SPACE\n";
+            }
+            else if (finalSerial == 1){ // newline
+                cout << "NEW LINE\n";
+            }
+            else if (finalSerial == 2){ // next uppercase character
+                cout << "NEXT CAP\n";
+                NEXT_CAP = true;
+            }
+            else{ // check the dictionary hash table
+                /*
+                To-do:
+                1) Mask the LSb, and chech if it is 0 or 1
+                2) Then, we need to do shift right operation
+                */
+                
+                // Check the word in the dictionary hash table
+                word = dictMapCode[finalSerial];
+                
+
+
+                // // Maybe we need to remove these ranges
+                // if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding 
+                    
+                // }
+                // else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
+                    
+                // }
+                // else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){ // THREE BYTE encoding
+                    
+                // }
+                // else{ // for special codeWords
+
+                // }
+
+                if(NEXT_CAP){
+                    // Change the first letter of the word to uppercase character
+                    word[0] = toupper(word[0]);
+
+                    // reset the NEXT_CAP to false
+                    NEXT_CAP = false;
+                }
+
+                cout << word << endl;
+
+            }
+
+
+            // reset both finalSerial and tmpSerial
+            tmpSerial = 0;
+            finalSerial = 0;
+
+        } // if (nextByte==0)
+        else{ // if (nextByte==1)
+            //finalSerial = (finalSerial << 7) | tmpSerial;
+            finalSerial = concatenateBytes(finalSerial, tmpSerial);
+        }
+        
+        byteIndex++;
+    }
+
+    if (inFile.eof()) {
+        cout << "End of file reached." << endl;
+    } else if (inFile.fail()) {
+        cerr << "Error: Failed to read the file." << endl;
+    }
+
+    inFile.close();
+
+    return 0;
+}
+
+uint32_t concatenateBytes(uint32_t final, uint32_t tmp){
+    return (final << 7) | tmp;
+}
+
+uint32_t readCodeWords(vector<uint8_t> bytes){
+    uint32_t serial;
+
+    if(serial == 0x0){ // space
+
+    }
+    else if (serial == 0x2){ // newline
+
+    }
+    else{
+        /*
+        To-do:
+        1) Mask the LSb, and chech if it is 0 or 1
+        2) Then, We need to do shift right operation
+        */
+        
+        if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding 
+            
+        }
+        else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
+            
+        }
+        else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){ // THREE BYTE encoding
+            
+        }
+    }
+
+    return serial;
+}
+
 
 /*
 'OBE_BYTE_CODE_GENERATOR' function:
