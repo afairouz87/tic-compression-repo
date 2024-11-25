@@ -67,12 +67,12 @@ the reserved codeWords (space, newline, nextCapital).
 #define NEXT_CAPITAL_CODE 0x2 
 
 #define TWO_BYTE_OFFSET pow(2,7)
-#define THREE_BYTE_OFFSET pow(2,7) + pow(2,14)
+#define THREE_BYTE_OFFSET (pow(2,7) + pow(2,14))
 #define ONE_BYTE_BOUND pow(2,7)
 #define ONE_BYTE_LOWER_BOUND 0
-#define TWO_BYTE_BOUND pow(2,7) + pow(2,14) 
+#define TWO_BYTE_BOUND (pow(2,7) + pow(2,14))
 //#define TWO_BYTE_MID (pow(2,7)-1) << 7
-#define THREE_BYTE_BOUND pow(2,7) + pow(2,14) + pow(2,21)
+#define THREE_BYTE_BOUND (pow(2,7) + pow(2,14) + pow(2,21))
 
 uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
 
@@ -110,7 +110,7 @@ void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data);
 void printBinaryFile(const string &filePath);
 
 uint32_t readCodeWords(vector<uint8_t> bytes);
-uint32_t concatenateBytes(uint32_t final, uint32_t tmp);
+uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count);
 
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
@@ -158,11 +158,17 @@ int main() {
 
     cout << "Sleep for one second..\n";
 
+
+
+
     this_thread::sleep_for(chrono::seconds(1));
+
+
+
 
     cout << "Building the dictionary hash table for decompression.." << endl;
     if(Build_Dictionary_Table_Decompression()==0)
-        cout << "The dictionary hash tablefor decompression has been built successfully." << endl;
+        cout << "The dictionary hash table for decompression has been built successfully." << endl;
     else
         cout << "Error in building the dictionary hash table!" << endl;
 
@@ -212,13 +218,13 @@ uint8_t Build_Dictionary_Table_Decompression(){
 
     // ** for testing ... **
     cout << "\nTotal words = " << serial-1 << "\n";
-    cout << "The hash map has been generated successfully!\n\n";
+    cout << "The hash map fro decompresssion has been generated successfully!\n\n";
 
-    // Test the hash map
-    cout << "Test the hash map:\n";
-    uint32_t tmpSerial = 127;
-    cout << "Serial (" << tmpSerial << ") has a word of: " << dictMapCode[tmpSerial] << "\n";
-    cout << "\n\n";
+    // // Test the hash map
+    // cout << "Test the hash map:\n";
+    // uint32_t tmpSerial = 127;
+    // cout << "Serial (" << tmpSerial << ") has a word of: " << dictMapCode[tmpSerial] << "\n";
+    // cout << "\n\n";
 
     return 0;
 }
@@ -254,9 +260,9 @@ uint8_t Build_Dictionary_Table_Compression(){
     // Close the file after reading
     file.close();
 
-    // ** for testing ... **
-    // cout << "\nTotal words = " << serial-1 << "\n";
-    // cout << "The hash map has been generated successfully!\n\n";
+    //** for testing ... **
+    cout << "\nTotal words = " << serial-1 << "\n";
+    cout << "The hash map for compression has been generated successfully!\n\n";
 
     // // Test the hash map
     // cout << "Test the hash map:\n";
@@ -289,25 +295,64 @@ uint8_t Compression_Function() {
     size_t bufferSize;
     string line;
 
-    while (getline(inFile, line)) { // Read each line
-        //vector<string> tokens = processLineChar(line, &outFile); // Process the line
-        tokens = processLineChar(line); // Process the line
-        //vector<uint8_t> tokens = processLineChar(line, &outFile); // Process the line
-        lineCodeWords = convertStringToCodeWord(tokens); // generate the codeWord and print it to the output binary file
 
-        buffer = reinterpret_cast<const char*>(lineCodeWords.data());
-        bufferSize = lineCodeWords.size();
-        outFile.write(buffer, bufferSize);
+    //*** Method 1 ***
+    string currentLine, nextLine;
 
-        //outFile.write(reinterpret_cast<const char*>(lineCodeWords.data()), lineCodeWords.size());
+    // Read the first line before entering the loop
+    if (getline(inFile, currentLine)) {
+        while (true) {
+            // Peek ahead to check for the next line
+            if (getline(inFile, nextLine)) {
+                // Process the current line
+                tokens = processLineChar(currentLine); // Process the line
+                lineCodeWords = convertStringToCodeWord(tokens); // Generate the code words
 
-        // // ** Output the processed tokens **
-        // // for (const auto &token : tokens) {
-        // for (size_t i = 0; i < tokens.size(); ++i) {
-        //     cout << tokens[i] << endl;
-        // }
-        // cout << endl;
+                buffer = reinterpret_cast<const char*>(lineCodeWords.data());
+                bufferSize = lineCodeWords.size();
+                outFile.write(buffer, bufferSize);
+
+                // Move to the next line
+                currentLine = nextLine;
+            } else {
+                // Handle the last line (no next line available)
+                tokens = processLineChar(currentLine); // Process the line
+                lineCodeWords = convertStringToCodeWord(tokens); // Generate the code words
+
+                lineCodeWords.pop_back(); // remove the last new line at the end of file
+                buffer = reinterpret_cast<const char*>(lineCodeWords.data());
+                bufferSize = lineCodeWords.size();
+                outFile.write(buffer, bufferSize);
+
+                // Break out of the loop after processing the last line
+                break;
+            }
+        }
     }
+
+
+
+
+    // // *** Method2 ***
+    // while (getline(inFile, line)) { // Read each line
+    //     //vector<string> tokens = processLineChar(line, &outFile); // Process the line
+    //     tokens = processLineChar(line); // Process the line
+    //     //vector<uint8_t> tokens = processLineChar(line, &outFile); // Process the line
+    //     lineCodeWords = convertStringToCodeWord(tokens); // generate the codeWord and print it to the output binary file
+
+    //     buffer = reinterpret_cast<const char*>(lineCodeWords.data());
+    //     bufferSize = lineCodeWords.size();
+    //     outFile.write(buffer, bufferSize);
+
+    //     //outFile.write(reinterpret_cast<const char*>(lineCodeWords.data()), lineCodeWords.size());
+
+    //     // // ** Output the processed tokens **
+    //     // // for (const auto &token : tokens) {
+    //     // for (size_t i = 0; i < tokens.size(); ++i) {
+    //     //     cout << tokens[i] << endl;
+    //     // }
+    //     // cout << endl;
+    // }
 
     inFile.close(); // Close the input file
     outFile.close(); // Close the output file
@@ -439,7 +484,7 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
         else{
             //cout << "String at index " << i << ": " << wordsSet[i] << endl;
             serial = dictMapWord[word]; // read th evalue of the word in the dictionary hash table
-            cout << word << " has a serial of " << serial << endl;
+            //cout << word << " has a serial of " << serial << endl;
 
             if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding
                 inputNumber = serial; // add the offset if the reserved codeWords (i.e. space, newline, ..)
@@ -450,7 +495,7 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
                 byteCodes = TWO_BYTE_CODE_GENERATOR(inputNumber); // generate a two bytes codeWord
             }
             else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){
-                inputNumber = serial - THREE_BYTE_OFFSET;
+                inputNumber = serial - (THREE_BYTE_OFFSET);
                 byteCodes = THREE_BYTE_CODE_GENERATOR(inputNumber); // generate a three bytes codeWord
             }
             else{
@@ -485,9 +530,16 @@ uint8_t Decompression_Function(){
     string word;
 
     // Open the file in binary mode
-    ifstream inFile(outputFileNameBin, ios::binary);
+    ifstream inFile(inputFileNameBin, ios::binary);
     if (!inFile) {
         cerr << "Error: Could not open file " << outputFileNameBin << " for reading." << endl;
+        return -1;
+    }
+
+    
+    ofstream outFile(outputFileNameText, ios::app); // Open in append mode
+    if (!outFile) {
+        cerr << "Error: Could not open file " << outputFileNameText << " for appending." << endl;
         return -1;
     }
 
@@ -495,6 +547,7 @@ uint8_t Decompression_Function(){
     size_t byteIndex = 0; // Optional: Index of the byte being read
     bool NEXT_CAP = false;
     int serial = 0;
+    uint32_t count = 0;
 
     char byte;
     cout << "Reading file byte by byte:" << endl;
@@ -513,18 +566,25 @@ uint8_t Decompression_Function(){
         
         if(nextByte==0){
             // Finalize the concatenated serial number
-            finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, tmpSerial));
-            serial = static_cast<uint32_t>(finalSerial);
+            finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, tmpSerial, count));
+            //cout << "Count = " << count << endl;
+            if(count == 1) // TWO CODE
+                finalSerial += TWO_BYTE_OFFSET;
+            else if(count == 2) // THREE CODE
+                finalSerial += THREE_BYTE_OFFSET;
+            //serial = static_cast<uint32_t>(finalSerial);
             //cout << "Serial = " << dec << static_cast<uint32_t>(serial) << endl;
 
             if(finalSerial == 0){ // space
-            cout << "SPACE\n";
+                //cout << "SPACE\n";
+                outFile << " ";
             }
             else if (finalSerial == 1){ // newline
-                cout << "NEW LINE\n";
+                //cout << "NEW LINE\n";
+                outFile << "\n";
             }
             else if (finalSerial == 2){ // next uppercase character
-                cout << "NEXT CAP\n";
+                //cout << "NEXT CAP\n";
                 NEXT_CAP = true;
             }
             else{ // check the dictionary hash table
@@ -561,19 +621,21 @@ uint8_t Decompression_Function(){
                     NEXT_CAP = false;
                 }
 
-                cout << word << endl;
+                //cout << word << endl;
+                outFile << word;
 
             }
-
 
             // reset both finalSerial and tmpSerial
             tmpSerial = 0;
             finalSerial = 0;
+            count = 0;
 
         } // if (nextByte==0)
         else{ // if (nextByte==1)
             //finalSerial = (finalSerial << 7) | tmpSerial;
-            finalSerial = concatenateBytes(finalSerial, tmpSerial);
+            finalSerial = concatenateBytes(finalSerial, tmpSerial, count);
+            count++;
         }
         
         byteIndex++;
@@ -586,12 +648,16 @@ uint8_t Decompression_Function(){
     }
 
     inFile.close();
+    outFile.close();
 
     return 0;
 }
 
-uint32_t concatenateBytes(uint32_t final, uint32_t tmp){
-    return (final << 7) | tmp;
+uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count){
+    // if (count == 0)
+    //     return tmp;
+    // else
+    return final | (tmp << (7*count));
 }
 
 uint32_t readCodeWords(vector<uint8_t> bytes){
@@ -668,18 +734,20 @@ Generate a 3-byte code of EPIC algorithm
 vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input)
 {
     vector<uint8_t> codeWord;
+    uint8_t byte1, byte2, byte3;
+    uint32_t input_shitf1;
 
-    uint8_t byte1 = Mask_Single_Byte(input); // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
+    byte1 = Mask_Single_Byte(input); // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
     byte1 = Shift_Left_with_One_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte1);
 
-    uint32_t input_shitf1 = Shift_Right_Seven_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
-    uint8_t byte2 = Mask_Single_Byte(input_shitf1); // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
+    input_shitf1 = Shift_Right_Seven_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    byte2 = Mask_Single_Byte(input_shitf1); // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
     byte2 = Shift_Left_with_One_Inserted(byte2); // shift 'byte2' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte2);
 
-    uint8_t byte3 = Shift_Right_Seven_Positions(input_shitf1); // shift 'DICT_ORDER_NUM' to the right by 7 positions
-    byte3 = byte3 << 1; // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
+    byte3 = Shift_Right_Seven_Positions(input_shitf1); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    byte3 = Shift_Left_with_Zero_Inserted(byte3); // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
     codeWord.push_back(byte3);
 
     return codeWord;
