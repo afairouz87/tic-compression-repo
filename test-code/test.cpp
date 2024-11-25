@@ -30,6 +30,9 @@ void checkLinesInFile(const string &filePath);
 bool endsWithNewline(const string &str);
 
 void writeStringToFile(const string &filePath, const string &line);
+void writeBinaryFile(ofstream *file, const vector<uint8_t> &data);
+void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data);
+
 
 int main() {
 
@@ -541,7 +544,30 @@ void THREE_BYTE_CODE_GENERATOR_BACKUP(uint32_t input)
     cout << endl;
 }
 
+void writeBinaryFile(ofstream *file, const vector<uint8_t> &data) {
+    if (!file || !file->is_open()) {
+        cerr << "Error: File pointer is null or file is not open." << endl;
+        return;
+    }
 
+    // Write bytes to the binary file
+    file->write(reinterpret_cast<const char *>(data.data()), data.size());
+    cout << "Bytes written successfully." << endl;
+}
+
+void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data) {
+    ofstream file(filePath, ios::binary | ios::app);
+    if (!file) {
+        cerr << "Error opening file for writing: " << filePath << endl;
+        return;
+    }
+
+    // Write the data to the binary file
+    file.write(reinterpret_cast<const char*>(data.data()), data.size());
+    file.close();
+
+    cout << "Data written to " << filePath << " successfully." << endl;
+}
 
 
 

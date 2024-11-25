@@ -4,7 +4,7 @@ Title: Enhanced PIC (EPIC) compression
 Author: Abbas A. Fairouz
 Version: 1.0
 Created: Sep. 17, 2024
-Updated: Nov. 13, 2024
+Updated: Nov. 25, 2024
 
 Word frequency reference:
 https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
@@ -28,9 +28,6 @@ https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 #include <thread>
 
 using namespace std;
-
-#define TWO_SEVEN pow(2,7)
-#define TWO_FOURTEEN pow(2,14)
 
 /*
 *** Notes for the byte codes range calculations ***
@@ -66,13 +63,13 @@ the reserved codeWords (space, newline, nextCapital).
 #define NEW_LINE_CODE 0x1
 #define NEXT_CAPITAL_CODE 0x2 
 
-#define TWO_BYTE_OFFSET pow(2,7)
-#define THREE_BYTE_OFFSET (pow(2,7) + pow(2,14))
-#define ONE_BYTE_BOUND pow(2,7)
+#define TWO_BYTE_OFFSET 128 // = pow(2,7)
+#define THREE_BYTE_OFFSET 16512 // = (pow(2,7) + pow(2,14))
+#define ONE_BYTE_BOUND 128 // = pow(2,7)
 #define ONE_BYTE_LOWER_BOUND 0
-#define TWO_BYTE_BOUND (pow(2,7) + pow(2,14))
+#define TWO_BYTE_BOUND 16512 // = (pow(2,7) + pow(2,14))
 //#define TWO_BYTE_MID (pow(2,7)-1) << 7
-#define THREE_BYTE_BOUND (pow(2,7) + pow(2,14) + pow(2,21))
+#define THREE_BYTE_BOUND 2113664 // = (pow(2,7) + pow(2,14) + pow(2,21))
 
 uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
 
@@ -96,16 +93,10 @@ vector<string> processLineChar(const string &line); // return a vector of string
 //vector<string> processLineChar(const string &line, ofstream *file); // return a vector of strings
 //vector<uint8_t> processLineChar(const string &line, ofstream *file); // return a vector of strings
 vector<uint8_t> convertStringToCodeWord(vector<string> word);
-uint8_t checkNumberOfCodeByte(int serial);
 
 char checkStringEndsWithPunctuation(const string &str);
 void checkLinesInFile(const string &filePath);
 bool endsWithNewline(const string &str);
-
-void writeStringToFile(const string &filePath, const string &line);
-
-void writeBinaryFile(ofstream *file, const vector<uint8_t> &data);
-void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data);
 
 void printBinaryFile(const string &filePath);
 
@@ -142,7 +133,7 @@ int main() {
     // ****************
 
     // Compression
-    // Building the dictionary hash table
+    // Building the dictionary hash table for compression
     cout << "Building the dictionary hash table from compression.." << endl;
     if(Build_Dictionary_Table_Compression()==0)
         cout << "The dictionary hash table from compression has been built successfully." << endl;
@@ -154,7 +145,8 @@ int main() {
     else
         cout << "Error in running the compression function!" << endl;
 
-    printBinaryFile(outputFileNameBin);
+    // For testing ...
+    //printBinaryFile(outputFileNameBin);
 
     cout << "Sleep for one second..\n";
 
@@ -165,7 +157,8 @@ int main() {
 
 
 
-
+    // Decompression
+    // Building the dictionary hash table for decompression
     cout << "Building the dictionary hash table for decompression.." << endl;
     if(Build_Dictionary_Table_Decompression()==0)
         cout << "The dictionary hash table for decompression has been built successfully." << endl;
@@ -182,7 +175,11 @@ int main() {
 
 
 
-/* OTHER FUNCTIONS */
+/* 
+--------------------------
+    OTHER FUNCTIONS 
+--------------------------
+*/
 
 
 uint8_t Build_Dictionary_Table_Decompression(){
@@ -330,48 +327,18 @@ uint8_t Compression_Function() {
         }
     }
 
-
-
-
-    // // *** Method2 ***
-    // while (getline(inFile, line)) { // Read each line
-    //     //vector<string> tokens = processLineChar(line, &outFile); // Process the line
-    //     tokens = processLineChar(line); // Process the line
-    //     //vector<uint8_t> tokens = processLineChar(line, &outFile); // Process the line
-    //     lineCodeWords = convertStringToCodeWord(tokens); // generate the codeWord and print it to the output binary file
-
-    //     buffer = reinterpret_cast<const char*>(lineCodeWords.data());
-    //     bufferSize = lineCodeWords.size();
-    //     outFile.write(buffer, bufferSize);
-
-    //     //outFile.write(reinterpret_cast<const char*>(lineCodeWords.data()), lineCodeWords.size());
-
-    //     // // ** Output the processed tokens **
-    //     // // for (const auto &token : tokens) {
-    //     // for (size_t i = 0; i < tokens.size(); ++i) {
-    //     //     cout << tokens[i] << endl;
-    //     // }
-    //     // cout << endl;
-    // }
-
     inFile.close(); // Close the input file
     outFile.close(); // Close the output file
 
     return 0;
 }
 
-/*  
-You need to think about on how to call byte generator 
-based on the serial from wordMap, or special cases,
-such as new line, space, next Capital, and puctuation.
-
-We can assign a code for the space: let's say '127' (0xff),
-to the vector of tokens of strings.
-In the decompression, we can infer the space vy it code '127' (0xff).
+/*
+-- Compression Function --
+A function used to process each line read from a plain text file separately.
+It will recognize between words, characters, uppercase, and puctuation characters.
 */
-//vector<string> processLineChar(const string &line, ofstream *file) {
 vector<string> processLineChar(const string &line) {
-//vector<uint8_t> processLineChar(const string &line, ofstream *file) {
     vector<string> result;
     vector<uint8_t> lineCodeWords;
     string word;
@@ -413,7 +380,7 @@ vector<string> processLineChar(const string &line) {
                 result.push_back(word);
                 word.clear();
             }
-            result.push_back(string(1, ' ')); // Add space 127 (0xff) as a separate string -- SPACE
+            result.push_back(string(1, ' ')); // Add space as a separate string -- SPACE
         }
 
         startsWithUppercase = false;
@@ -427,22 +394,6 @@ vector<string> processLineChar(const string &line) {
     return result; // return a vector of separate strings
 }
 
-uint8_t checkNumberOfCodeByte(int serial){
-    uint8_t codeRange=0;
-
-    if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding 
-        codeRange = 1;
-    }
-    else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
-        codeRange = 2;
-    }
-    else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){ // THREE BYTE encoding
-        codeRange = 3;
-    }
-
-    return codeRange;
-}
-
 vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
 
     vector<uint8_t> lineCodeWords;
@@ -452,17 +403,12 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
     uint32_t serial = 0, inputNumber = 0;
     string word;
 
-    //serial += CODE_WORD_OFFSET + dictMapWord[word];
     /* 
     *** Open the output file in appen mode **
     WARNING: 
     Since the output file is in an append mode,
     you need to delete the output file after each run.
-    */
-    //ofstream file(outputFilePath, ios::binary | ios::app); // open the output file
-
-
-    /*
+    
     *** Generate T0 ***
     Have reserved values:
     1) Space                => 0x0
@@ -516,14 +462,6 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
     return lineCodeWords;
 }
 
-
-// Abbas reached here...
-/*
-You need to think about how to read byte by byte.
-Then, send the vector of bytes to parse them to serial number.
-After that, you can check the hash table for the text word in
-your dictionary hash table.
-*/
 uint8_t Decompression_Function(){
     vector<uint8_t> byteCodes;
     uint32_t tmpSerial = 0, finalSerial = 0;
@@ -535,7 +473,6 @@ uint8_t Decompression_Function(){
         cerr << "Error: Could not open file " << outputFileNameBin << " for reading." << endl;
         return -1;
     }
-
     
     ofstream outFile(outputFileNameText, ios::app); // Open in append mode
     if (!outFile) {
@@ -555,28 +492,36 @@ uint8_t Decompression_Function(){
     // Read the file byte by byte
     //while (inFile.read(reinterpret_cast<char*>(&byte), sizeof(byte))) {
     while (inFile.read(&byte, 1)) {
-        //cout << "Byte " << byteIndex << ": 0x" << hex << static_cast<uint32_t>(byte) << endl;
-        //serial = readCodeWords(byteCodes);
         tmpSerial = static_cast<uint8_t>(byte);
-        nextByte = tmpSerial % 2;
-        //cout << "tmpSerial = " << tmpSerial << endl;
-        tmpSerial = tmpSerial >> 1;
-        //cout << "tmpSerial >> 1 = " << tmpSerial << endl;
         
+        /* 
+        ----------
+        To check the LSb of the byte: 
+        '1' --> there is a next byte. 
+        '0' --> last byte in the codeWord sequence
+        ----------
+        */
+        nextByte = tmpSerial % 2; 
+        
+        tmpSerial = tmpSerial >> 1; // ignore the LSb after reading it
         
         if(nextByte==0){
             // Finalize the concatenated serial number
             finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, tmpSerial, count));
-            //cout << "Count = " << count << endl;
+            
+            /*
+            ----------
+            Note:
+            The variable "count" is used to count the number of ones 
+            realized in the codeWord while reading each byte separately.
+            ----------
+            */
             if(count == 1) // TWO CODE
                 finalSerial += TWO_BYTE_OFFSET;
             else if(count == 2) // THREE CODE
                 finalSerial += THREE_BYTE_OFFSET;
-            //serial = static_cast<uint32_t>(finalSerial);
-            //cout << "Serial = " << dec << static_cast<uint32_t>(serial) << endl;
-
+            
             if(finalSerial == 0){ // space
-                //cout << "SPACE\n";
                 outFile << " ";
             }
             else if (finalSerial == 1){ // newline
@@ -588,31 +533,10 @@ uint8_t Decompression_Function(){
                 NEXT_CAP = true;
             }
             else{ // check the dictionary hash table
-                /*
-                To-do:
-                1) Mask the LSb, and chech if it is 0 or 1
-                2) Then, we need to do shift right operation
-                */
                 
                 // Check the word in the dictionary hash table
                 word = dictMapCode[finalSerial];
                 
-
-
-                // // Maybe we need to remove these ranges
-                // if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding 
-                    
-                // }
-                // else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
-                    
-                // }
-                // else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){ // THREE BYTE encoding
-                    
-                // }
-                // else{ // for special codeWords
-
-                // }
-
                 if(NEXT_CAP){
                     // Change the first letter of the word to uppercase character
                     word[0] = toupper(word[0]);
@@ -621,10 +545,8 @@ uint8_t Decompression_Function(){
                     NEXT_CAP = false;
                 }
 
-                //cout << word << endl;
                 outFile << word;
-
-            }
+            } // end of else 'check the dictionary hash table'
 
             // reset both finalSerial and tmpSerial
             tmpSerial = 0;
@@ -660,39 +582,8 @@ uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count){
     return final | (tmp << (7*count));
 }
 
-uint32_t readCodeWords(vector<uint8_t> bytes){
-    uint32_t serial;
-
-    if(serial == 0x0){ // space
-
-    }
-    else if (serial == 0x2){ // newline
-
-    }
-    else{
-        /*
-        To-do:
-        1) Mask the LSb, and chech if it is 0 or 1
-        2) Then, We need to do shift right operation
-        */
-        
-        if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding 
-            
-        }
-        else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
-            
-        }
-        else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){ // THREE BYTE encoding
-            
-        }
-    }
-
-    return serial;
-}
-
-
 /*
-'OBE_BYTE_CODE_GENERATOR' function:
+'ONE_BYTE_CODE_GENERATOR' function:
 Generate a 1-byte code of EPIC algorithm
 */
 vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input)
@@ -843,52 +734,6 @@ void checkLinesInFile(const string &filePath) {
     }
 
     file.close(); // Close the file
-}
-
-/*
-"Probably will not use it".
-A function to write a single string to a text file.
-Then append the string with a newline character 
-at the end of the string in the text file.
-*/
-void writeStringToFile(const string &filePath, const string &line) {
-    ofstream file(filePath, ios::app); // Open the file in append mode
-    if (!file) {
-        cerr << "Error opening file: " << filePath << endl;
-        return;
-    }
-
-    // Write the string to the file and append a newline
-    file << line << endl;
-
-    file.close(); // Close the file after writing
-}
-
-
-
-void writeBinaryFile(ofstream *file, const vector<uint8_t> &data) {
-    if (!file || !file->is_open()) {
-        cerr << "Error: File pointer is null or file is not open." << endl;
-        return;
-    }
-
-    // Write bytes to the binary file
-    file->write(reinterpret_cast<const char *>(data.data()), data.size());
-    cout << "Bytes written successfully." << endl;
-}
-
-void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data) {
-    ofstream file(filePath, ios::binary | ios::app);
-    if (!file) {
-        cerr << "Error opening file for writing: " << filePath << endl;
-        return;
-    }
-
-    // Write the data to the binary file
-    file.write(reinterpret_cast<const char*>(data.data()), data.size());
-    file.close();
-
-    cout << "Data written to " << filePath << " successfully." << endl;
 }
 
 // Print the hex code of the binary file for testing.
