@@ -44,9 +44,9 @@ BC2 offset: (2^7)
 BC3 offset: (2^7) + (2^14)
 
 *** Comments:
-Dictionary table - implementation options:
-1. Create multiple hash map tables: BC1 hash map, BC2 hash map, ... etc    ??
-2. ..
+To-Do:
+1. Implement the special codeWord encoding scheme.
+
 
 
 
@@ -64,12 +64,14 @@ the reserved codeWords (space, newline, nextCapital).
 #define NEXT_CAPITAL_CODE 0x2 
 
 #define TWO_BYTE_OFFSET 128 // = pow(2,7)
-#define THREE_BYTE_OFFSET 16512 // = (pow(2,7) + pow(2,14))
-#define ONE_BYTE_BOUND 128 // = pow(2,7)
+#define THREE_BYTE_OFFSET 16512 // = ( pow(2,7) + pow(2,14) )
+#define FOUR_BYTE_OFFSET 2113664 // = ( pow(2,7) + pow(2,14) + pow(2,21) )
 #define ONE_BYTE_LOWER_BOUND 0
-#define TWO_BYTE_BOUND 16512 // = (pow(2,7) + pow(2,14))
-//#define TWO_BYTE_MID (pow(2,7)-1) << 7
-#define THREE_BYTE_BOUND 2113664 // = (pow(2,7) + pow(2,14) + pow(2,21))
+#define ONE_BYTE_BOUND 128 // = pow(2,7)
+#define TWO_BYTE_BOUND 16512 // = ( pow(2,7) + pow(2,14) )
+#define THREE_BYTE_BOUND 2113664 // = ( pow(2,7) + pow(2,14) + pow(2,21) )
+#define FOUR_BYTE_BOUND 270549120 // = ( pow(2,7) + pow(2,14) + pow(2,21) + pow(2,28) )
+
 
 uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
 
