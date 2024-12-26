@@ -9,4 +9,5 @@
 
     "editor.fontSize": 12,
     "window.zoomLevel": 1,
+    "makefile.configureOnOpen": true,
 }

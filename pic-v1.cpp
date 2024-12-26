@@ -43,7 +43,15 @@ BC3 range: (2^7) + (2^14)  --> (2^7) + (2^14) + (2^21) - 1
 BC2 offset: (2^7)
 BC3 offset: (2^7) + (2^14)
 
-*** Comments:
+*** Generate T0 ***
+    Have reserved values:
+    1) Space                => 0x0
+    2) New line             => 0x1 --> in EPIC format, shift left by 1 => 0x2
+    3) Next Capital letter  => 0x2 --> in EPIC format, shift left by 1 => 0x4
+    4) Special codeWord     => 0x3 --> in EPIC format, shift left by 1 => 0x6
+
+
+*** Comments ***
 To-Do:
 1. Implement the special codeWord encoding scheme.
 
@@ -61,7 +69,8 @@ the reserved codeWords (space, newline, nextCapital).
 // Reserved codeWords: space, new line, next capital
 #define SPACE_CODE 0x0
 #define NEW_LINE_CODE 0x1
-#define NEXT_CAPITAL_CODE 0x2 
+#define NEXT_CAPITAL_CODE 0x2
+#define SPECIAL_CODE 0x3 
 
 #define TWO_BYTE_OFFSET 128 // = pow(2,7)
 #define THREE_BYTE_OFFSET 16512 // = ( pow(2,7) + pow(2,14) )
@@ -80,6 +89,7 @@ uint8_t Build_Dictionary_Table_Decompression();
 vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
 
 uint8_t Mask_Single_Byte(uint32_t number);
 uint32_t Shift_Left_with_One_Inserted(uint32_t number);
@@ -126,6 +136,7 @@ string outputFileNameText = "output.txt";
 // *********************************************
 //            Main Function
 // *********************************************
+//int main(int argc, char * argv[]) {
 int main() {
 
     // **** TESTs ****
@@ -358,7 +369,6 @@ vector<string> processLineChar(const string &line) {
             ch = tolower(ch); // set the uppercase character to lowercase character.
             word += ch;
         } 
-        //else if (ch == '\'') { // Handle apostrophes
         else if (ch == '\'' || (i + 2 <= line.size() && line.substr(i, 3) == "’")) {
             if (!word.empty()) {
                 result.push_back(word);
@@ -619,6 +629,19 @@ vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input)
     return codeWord;
 }
 
+
+/*
+'THREE_BYTE_CODE_GENERATOR' function:
+Generate a 3-byte code of EPIC algorithm
+*/
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input)
+{
+    vector<uint8_t> codeWord;
+    uint8_t byte1, byte2, byte3;
+
+
+    return codeWord;
+}
 
 /*
 'THREE_BYTE_CODE_GENERATOR' function:
