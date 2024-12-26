@@ -46,9 +46,13 @@ BC3 offset: (2^7) + (2^14)
 *** Comments:
 To-Do:
 1. Implement the special codeWord encoding scheme.
-
-
-Test Mac Mini VScode
+For the special code word, if a word is not found in the dictionary hash table,
+then it will be considerd as a special codeWord.
+The encoding of the special codeWord will be as follows:
+Byte-1: represents the number of characters to hold the ASCII encodeing of the special codeWord
+Byte-2:
+...
+Byte-n: last ASCII byte code
 
 */
 
@@ -56,12 +60,13 @@ Test Mac Mini VScode
 This is used to shift the codeWord by 
 the reserved codeWords (space, newline, nextCapital).
 */ 
-#define CODE_WORD_OFFSET 3
+#define CODE_WORD_OFFSET 4
 
 // Reserved codeWords: space, new line, next capital
 #define SPACE_CODE 0x0
 #define NEW_LINE_CODE 0x1
-#define NEXT_CAPITAL_CODE 0x2 
+#define NEXT_CAPITAL_CODE 0x2
+#define NEXT_SPECIAL_CODE 0x3
 
 #define TWO_BYTE_OFFSET 128 // = pow(2,7)
 #define THREE_BYTE_OFFSET 16512 // = ( pow(2,7) + pow(2,14) )
