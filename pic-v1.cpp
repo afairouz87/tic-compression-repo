@@ -54,9 +54,18 @@ BC3 offset: (2^7) + (2^14)
 *** Comments ***
 To-Do:
 1. Implement the special codeWord encoding scheme.
+** For the special code word, if a word is not found in the dictionary hash table,
+then it will be considerd as a special codeWord.
+The encoding of the special codeWord will be as follows:
+Byte-1: represents the number of characters to hold the ASCII encodeing of the special codeWord
+Byte-2:
+...
+Byte-n: last ASCII byte code
+
+** We can add a reserved codeWord for indicating that the next word is a special codeWord.
 
 
-
+Test Mac Pro
 
 */
 
@@ -64,13 +73,13 @@ To-Do:
 This is used to shift the codeWord by 
 the reserved codeWords (space, newline, nextCapital).
 */ 
-#define CODE_WORD_OFFSET 3
+#define CODE_WORD_OFFSET 4
 
 // Reserved codeWords: space, new line, next capital
 #define SPACE_CODE 0x0
 #define NEW_LINE_CODE 0x1
 #define NEXT_CAPITAL_CODE 0x2
-#define SPECIAL_CODE 0x3 
+#define NEXT_SPECIAL_CODE 0x3
 
 #define TWO_BYTE_OFFSET 128 // = pow(2,7)
 #define THREE_BYTE_OFFSET 16512 // = ( pow(2,7) + pow(2,14) )
@@ -194,7 +203,7 @@ int main() {
 --------------------------
 */
 
-
+// *** Consecutive Array for Decompression ***
 uint8_t Build_Dictionary_Table_Decompression(){
     // Variables to store each line and word
     string line, word;
@@ -228,7 +237,7 @@ uint8_t Build_Dictionary_Table_Decompression(){
 
     // ** for testing ... **
     cout << "\nTotal words = " << serial-1 << "\n";
-    cout << "The hash map fro decompresssion has been generated successfully!\n\n";
+    cout << "The hash map for decompresssion has been generated successfully!\n\n";
 
     // // Test the hash map
     // cout << "Test the hash map:\n";
@@ -238,6 +247,52 @@ uint8_t Build_Dictionary_Table_Decompression(){
 
     return 0;
 }
+
+// *** Hash Table for Decompression ***
+// uint8_t Build_Dictionary_Table_Decompression(){
+//     // Variables to store each line and word
+//     string line, word;
+//     uint32_t serial = CODE_WORD_OFFSET; // Start serializing from 0
+
+//     // Open the Text file
+//     ifstream file(dictFilename);
+
+//     // Check if the file is open
+//     if (!file.is_open()) {
+//         cerr << "Error opening file: " << dictFilename << endl;
+//         return 1;
+//     }
+
+//     // Read the file line by line
+//     while (getline(file, line)) {
+//         stringstream ss(line); // Use a stringstream to parse the line
+//         string temp; // To hold the "count" column which we will ignore
+        
+//         // Get the word from the line
+//         // getline(ss, word, ','); 
+//         // getline(ss, temp, ','); // Ignore the second column (count)
+//         getline(ss, word, '\n'); 
+        
+//         dictMapCode[serial] = word;
+//         serial++;
+//     }
+
+//     // Close the file after reading
+//     file.close();
+
+//     // ** for testing ... **
+//     cout << "\nTotal words = " << serial-1 << "\n";
+//     cout << "The hash map for decompresssion has been generated successfully!\n\n";
+
+//     // // Test the hash map
+//     // cout << "Test the hash map:\n";
+//     // uint32_t tmpSerial = 127;
+//     // cout << "Serial (" << tmpSerial << ") has a word of: " << dictMapCode[tmpSerial] << "\n";
+//     // cout << "\n\n";
+
+//     return 0;
+// }
+
 
 uint8_t Build_Dictionary_Table_Compression(){
     // Variables to store each line and word
@@ -424,7 +479,7 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
     *** Generate T0 ***
     Have reserved values:
     1) Space                => 0x0
-    2) New line             => 0x1  --> in EPIC format, shift left by 1 => 0x2
+    2) New line             => 0x1 --> in EPIC format, shift left by 1 => 0x2
     3) Next Capital letter  => 0x2 --> in EPIC format, shift left by 1 => 0x4
     */
 

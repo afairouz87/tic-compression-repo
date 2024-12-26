@@ -4,7 +4,8 @@
         "bitset": "cpp",
         "ostream": "cpp",
         "vector": "cpp",
-        "string": "cpp"
+        "string": "cpp",
+        "iosfwd": "cpp"
     },
 
     "editor.fontSize": 12,

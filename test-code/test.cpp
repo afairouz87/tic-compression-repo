@@ -33,19 +33,33 @@ void writeStringToFile(const string &filePath, const string &line);
 void writeBinaryFile(ofstream *file, const vector<uint8_t> &data);
 void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data);
 
+size_t countLinesInFile(const string &filePath);
+
+// File input path
+string filePath = "test1.txt"; // Replace with your file path
 
 int main() {
 
-    string s1 = " ";
-    
-    cout << "length is " << s1.size() << endl;
-    if(s1.size() == 1)
-        cout << "length is one\n";
+    size_t lineCount = countLinesInFile(filePath);
+    cout << "Number of lines in the file: " << lineCount << endl;
 
-    uint8_t byte = static_cast<uint8_t> (s1[0]);
-    cout << "value of s1 (DEC) is " << static_cast<int>(byte) << endl;
-    cout << "value of s1 (HEX) is " << hex << setw(2) << setfill('0') << static_cast<int>(byte) << endl;
+    return 0;
+
+
+    // *** Test ***
+    // ** Check the SPACE character ***
+    // string s1 = " ";
     
+    // cout << "length is " << s1.size() << endl;
+    // if(s1.size() == 1)
+    //     cout << "length is one\n";
+
+    // uint8_t byte = static_cast<uint8_t> (s1[0]);
+    // cout << "value of s1 (DEC) is " << static_cast<int>(byte) << endl;
+    // cout << "value of s1 (HEX) is " << hex << setw(2) << setfill('0') << static_cast<int>(byte) << endl;
+    // ***********************************
+
+
     // // Save a single space in a string
     // string singleSpace = " ";
 
@@ -136,6 +150,23 @@ int main() {
 
     return 0;
 }
+
+
+size_t countLinesInFile(const string &filePath) {
+    ifstream file(filePath);
+    if (!file) {
+        cerr << "Error: Could not open file " << filePath << endl;
+        return 0;
+    }
+
+    // Count newline characters using std::count and istreambuf_iterator
+    size_t lineCount = count(istreambuf_iterator<char>(file),
+                             istreambuf_iterator<char>(), '\n');
+
+    file.close();
+    return lineCount;
+}
+
 
 vector<string> processLine(const string &line) {
     vector<string> result;
