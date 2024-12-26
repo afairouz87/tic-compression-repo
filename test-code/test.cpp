@@ -33,6 +33,7 @@ void writeStringToFile(const string &filePath, const string &line);
 void writeBinaryFile(ofstream *file, const vector<uint8_t> &data);
 void writeBinaryFileOLD(const string &filePath, const vector<uint8_t> &data);
 
+size_t countLinesInFile(const string &filePath);
 
 // File input path
 string filePath = "test1.txt"; // Replace with your file path
