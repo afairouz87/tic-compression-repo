@@ -57,6 +57,8 @@ Byte-n: last ASCII byte code
 ** We can add a reserved codeWord for indicating that the next word is a special codeWord.
 
 
+Test Mac Mini 
+Clone repofi
 
 */
 
