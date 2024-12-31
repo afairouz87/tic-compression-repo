@@ -38,10 +38,21 @@ size_t countLinesInFile(const string &filePath);
 // File input path
 string filePath = "test1.txt"; // Replace with your file path
 
+unordered_map<string, uint32_t> hashMap; // Compression Hash Table
+
 int main() {
 
     size_t lineCount = countLinesInFile(filePath);
     cout << "Number of lines in the file: " << lineCount << endl;
+
+    hashMap["test1"] = 1;
+    hashMap["test2"] = 2;
+    hashMap["test3"] = 3;
+
+    string lookup_String = "helloThere";
+
+    cout << "hash map [test2] = " << hashMap["test2"] << endl;
+    cout << "hash map [" << lookup_String << "] = " << hashMap[lookup_String] << endl;
 
     return 0;
 

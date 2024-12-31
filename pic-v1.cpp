@@ -77,7 +77,7 @@ the reserved codeWords (space, newline, nextCapital).
 #define TWO_BYTE_OFFSET 128 // = pow(2,7)
 #define THREE_BYTE_OFFSET 16512 // = ( pow(2,7) + pow(2,14) )
 #define FOUR_BYTE_OFFSET 2113664 // = ( pow(2,7) + pow(2,14) + pow(2,21) )
-#define ONE_BYTE_LOWER_BOUND 0
+#define ONE_BYTE_LOWER_BOUND CODE_WORD_OFFSET
 #define ONE_BYTE_BOUND 128 // = pow(2,7)
 #define TWO_BYTE_BOUND 16512 // = ( pow(2,7) + pow(2,14) )
 #define THREE_BYTE_BOUND 2113664 // = ( pow(2,7) + pow(2,14) + pow(2,21) )
@@ -198,7 +198,7 @@ int main() {
 uint8_t Build_Dictionary_Table_Decompression(){
     // Variables to store each line and word
     string line, word;
-    uint32_t serial = CODE_WORD_OFFSET; // Start serializing from 0
+    uint32_t serial = CODE_WORD_OFFSET; // Start serializing after the the serialized number of all reserved codeWords
 
     // Open the Text file
     ifstream file(dictFilename);
@@ -487,9 +487,13 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
             lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_CAPITAL_CODE)); // next uppercase letter codeWord
         }
         else{
-            //cout << "String at index " << i << ": " << wordsSet[i] << endl;
+            
+            /*
+            NOTE:
+            - In the 'unordered_map', the returned value of 'not found' hash key is zero '0'.
+            */
             serial = dictMapWord[word]; // read th evalue of the word in the dictionary hash table
-            //cout << word << " has a serial of " << serial << endl;
+            
 
             if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding
                 inputNumber = serial; // add the offset if the reserved codeWords (i.e. space, newline, ..)
