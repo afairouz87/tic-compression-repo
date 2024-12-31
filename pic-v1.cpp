@@ -43,7 +43,15 @@ BC3 range: (2^7) + (2^14)  --> (2^7) + (2^14) + (2^21) - 1
 BC2 offset: (2^7)
 BC3 offset: (2^7) + (2^14)
 
-*** Comments:
+*** Generate T0 ***
+    Have reserved values:
+    1) Space                => 0x0
+    2) New line             => 0x1 --> in EPIC format, shift left by 1 => 0x2
+    3) Next Capital letter  => 0x2 --> in EPIC format, shift left by 1 => 0x4
+    4) Special codeWord     => 0x3 --> in EPIC format, shift left by 1 => 0x6
+
+
+*** Comments ***
 To-Do:
 1. Implement the special codeWord encoding scheme.
 ** For the special code word, if a word is not found in the dictionary hash table,
@@ -57,8 +65,7 @@ Byte-n: last ASCII byte code
 ** We can add a reserved codeWord for indicating that the next word is a special codeWord.
 
 
-Test Mac Mini 
-Clone repofi
+Test Mac Pro
 
 */
 
@@ -91,6 +98,7 @@ uint8_t Build_Dictionary_Table_Decompression();
 vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
 
 uint8_t Mask_Single_Byte(uint32_t number);
 uint32_t Shift_Left_with_One_Inserted(uint32_t number);
@@ -116,9 +124,12 @@ void printBinaryFile(const string &filePath);
 uint32_t readCodeWords(vector<uint8_t> bytes);
 uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count);
 
+uint32_t countLinesInFile(const string &filePath); // read the number of words in the dictionary 
+
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
 unordered_map<uint32_t, string> dictMapCode; // Decompression Hash Table
+string *dictMapCodeArray = nullptr; // Decompression Consecutive Array of rank of codeWords
 
 // File path of the CSV file
 //string dictFilename = "unigram_freq.csv"; 
@@ -137,7 +148,13 @@ string outputFileNameText = "output.txt";
 // *********************************************
 //            Main Function
 // *********************************************
+//int main(int argc, char * argv[]) {
 int main() {
+
+    uint32_t numberOfWords = countLinesInFile(dictFilename);
+    cout << "Number of lines in the dictionary file: " << numberOfWords << endl;
+
+    dictMapCodeArray = new string[numberOfWords+10]; // add an extra spaces
 
     // **** TESTs ****
     // int TMP_NUM = ONE_BYTE_BOUND-1;
@@ -147,9 +164,9 @@ int main() {
 
     // Compression
     // Building the dictionary hash table for compression
-    cout << "Building the dictionary hash table from compression.." << endl;
+    cout << "Building the dictionary hash table for compression.." << endl;
     if(Build_Dictionary_Table_Compression()==0)
-        cout << "The dictionary hash table from compression has been built successfully." << endl;
+        cout << "The dictionary hash table for compression has been built successfully." << endl;
     else
         cout << "Error in building the dictionary hash table!" << endl;
 
@@ -182,6 +199,10 @@ int main() {
         cout << "The decompression function is successful." << endl;
     else
         cout << "Error in running the decompression function!" << endl;
+
+
+    delete[] dictMapCodeArray;
+    dictMapCodeArray = nullptr;
 
     return 0;
 } // main function
@@ -219,7 +240,7 @@ uint8_t Build_Dictionary_Table_Decompression(){
         // getline(ss, temp, ','); // Ignore the second column (count)
         getline(ss, word, '\n'); 
         
-        dictMapCode[serial] = word;
+        dictMapCodeArray[serial] = word;
         serial++;
     }
 
@@ -415,7 +436,6 @@ vector<string> processLineChar(const string &line) {
             ch = tolower(ch); // set the uppercase character to lowercase character.
             word += ch;
         } 
-        //else if (ch == '\'') { // Handle apostrophes
         else if (ch == '\'' || (i + 2 <= line.size() && line.substr(i, 3) == "’")) {
             if (!word.empty()) {
                 result.push_back(word);
@@ -598,7 +618,10 @@ uint8_t Decompression_Function(){
             else{ // check the dictionary hash table
                 
                 // Check the word in the dictionary hash table
-                word = dictMapCode[finalSerial];
+                //word = dictMapCode[finalSerial];
+
+                // Check the word in the dictionary array of words
+                word = dictMapCodeArray[finalSerial];
                 
                 if(NEXT_CAP){
                     // Change the first letter of the word to uppercase character
@@ -680,6 +703,19 @@ vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input)
     return codeWord;
 }
 
+
+/*
+'THREE_BYTE_CODE_GENERATOR' function:
+Generate a 3-byte code of EPIC algorithm
+*/
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input)
+{
+    vector<uint8_t> codeWord;
+    uint8_t byte1, byte2, byte3;
+
+
+    return codeWord;
+}
 
 /*
 'THREE_BYTE_CODE_GENERATOR' function:
@@ -817,4 +853,24 @@ void printBinaryFile(const string &filePath) {
         cout << hex << static_cast<int>(buffer[i]) << " ";  // Print each byte as HEX number
     }
     cout << endl;
+}
+
+/*
+NOTE:
+It returns the number of lines-1.
+Because there is no newline character '\n' at the ennd of file.
+*/ 
+uint32_t countLinesInFile(const string &filePath) {
+    ifstream file(filePath);
+    if (!file) {
+        cerr << "Error: Could not open file " << filePath << endl;
+        return 0;
+    }
+
+    // Count newline characters using std::count and istreambuf_iterator
+    size_t lineCount = count(istreambuf_iterator<char>(file),
+                             istreambuf_iterator<char>(), '\n');
+
+    file.close();
+    return lineCount;
 }

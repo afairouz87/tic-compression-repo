@@ -162,7 +162,11 @@ int main() {
     return 0;
 }
 
-
+/*
+NOTE:
+It returns the number of lines-1.
+Because there is no newline character '\n' at the ennd of file.
+*/ 
 size_t countLinesInFile(const string &filePath) {
     ifstream file(filePath);
     if (!file) {
