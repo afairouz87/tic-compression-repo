@@ -124,9 +124,12 @@ void printBinaryFile(const string &filePath);
 uint32_t readCodeWords(vector<uint8_t> bytes);
 uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count);
 
+uint32_t countLinesInFile(const string &filePath); // read the number of words in the dictionary 
+
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
 unordered_map<uint32_t, string> dictMapCode; // Decompression Hash Table
+string *dictMapCodeArray = nullptr; // Decompression Consecutive Array of rank of codeWords
 
 // File path of the CSV file
 //string dictFilename = "unigram_freq.csv"; 
@@ -148,6 +151,11 @@ string outputFileNameText = "output.txt";
 //int main(int argc, char * argv[]) {
 int main() {
 
+    uint32_t numberOfWords = countLinesInFile(dictFilename);
+    cout << "Number of lines in the dictionary file: " << numberOfWords << endl;
+
+    dictMapCodeArray = new string[numberOfWords+10]; // add an extra spaces
+
     // **** TESTs ****
     // int TMP_NUM = ONE_BYTE_BOUND-1;
     // const int TWO_BYTE_MID = TMP_NUM << 7;
@@ -156,9 +164,9 @@ int main() {
 
     // Compression
     // Building the dictionary hash table for compression
-    cout << "Building the dictionary hash table from compression.." << endl;
+    cout << "Building the dictionary hash table for compression.." << endl;
     if(Build_Dictionary_Table_Compression()==0)
-        cout << "The dictionary hash table from compression has been built successfully." << endl;
+        cout << "The dictionary hash table for compression has been built successfully." << endl;
     else
         cout << "Error in building the dictionary hash table!" << endl;
 
@@ -191,6 +199,10 @@ int main() {
         cout << "The decompression function is successful." << endl;
     else
         cout << "Error in running the decompression function!" << endl;
+
+
+    delete[] dictMapCodeArray;
+    dictMapCodeArray = nullptr;
 
     return 0;
 } // main function
@@ -228,7 +240,7 @@ uint8_t Build_Dictionary_Table_Decompression(){
         // getline(ss, temp, ','); // Ignore the second column (count)
         getline(ss, word, '\n'); 
         
-        dictMapCode[serial] = word;
+        dictMapCodeArray[serial] = word;
         serial++;
     }
 
@@ -602,7 +614,10 @@ uint8_t Decompression_Function(){
             else{ // check the dictionary hash table
                 
                 // Check the word in the dictionary hash table
-                word = dictMapCode[finalSerial];
+                //word = dictMapCode[finalSerial];
+
+                // Check the word in the dictionary array of words
+                word = dictMapCodeArray[finalSerial];
                 
                 if(NEXT_CAP){
                     // Change the first letter of the word to uppercase character
@@ -834,4 +849,24 @@ void printBinaryFile(const string &filePath) {
         cout << hex << static_cast<int>(buffer[i]) << " ";  // Print each byte as HEX number
     }
     cout << endl;
+}
+
+/*
+NOTE:
+It returns the number of lines-1.
+Because there is no newline character '\n' at the ennd of file.
+*/ 
+uint32_t countLinesInFile(const string &filePath) {
+    ifstream file(filePath);
+    if (!file) {
+        cerr << "Error: Could not open file " << filePath << endl;
+        return 0;
+    }
+
+    // Count newline characters using std::count and istreambuf_iterator
+    size_t lineCount = count(istreambuf_iterator<char>(file),
+                             istreambuf_iterator<char>(), '\n');
+
+    file.close();
+    return lineCount;
 }
