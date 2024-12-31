@@ -514,7 +514,10 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
             */
             serial = dictMapWord[word]; // read th evalue of the word in the dictionary hash table
             
-
+            if(serial == 0) { // NOT FOUND in the hash table - SPECIAL codeWord
+                // Call a function to generate a special codeWord
+                // ... To-Do ...
+            }
             if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding
                 inputNumber = serial; // add the offset if the reserved codeWords (i.e. space, newline, ..)
                 byteCodes = ONE_BYTE_CODE_GENERATOR(inputNumber); // generate a single byte codeWord
