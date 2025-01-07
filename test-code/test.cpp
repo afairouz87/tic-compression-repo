@@ -13,6 +13,8 @@
 
 using namespace std;
 
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
+
 void TWO_BYTE_CODE_GENERATOR(uint32_t input);
 void THREE_BYTE_CODE_GENERATOR(uint32_t input);
 
@@ -55,7 +57,16 @@ int main() {
     cout << "hash map [" << lookup_String << "] = " << hashMap[lookup_String] << endl;
     cout << "String[3] = " << lookup_String[3] << endl;
 
+    // Test the special code generator function
+    string myString1 = "Abbas";
+    vector<uint8_t> byteCode = SPECIAL_CODE_WORD_GENERATOR(myString1);
+    for (size_t i=0; i < byteCode.size(); i++)
+        cout << hex << static_cast<int>(byteCode[i]) << endl;
+
+    cout << endl;
+
     return 0;
+
 
 
     // *** Test ***
@@ -181,6 +192,36 @@ size_t countLinesInFile(const string &filePath) {
 
     file.close();
     return lineCount;
+}
+
+
+/*
+'SPECIAL_CODE_GENERATOR' function:
+Generate 
+*/
+//vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input) {
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input) {
+    vector<uint8_t> result;
+
+    // Calculate the number of upcoming bytes (excluding the first byte)
+    uint8_t sizeByte = input.length();
+    sizeByte = (sizeByte << 1) | 1; // Shift left by 1 and set the least significant bit to 1
+    result.push_back(sizeByte);     // Add the size byte to the vector
+
+    // Process each character in the string
+    for (size_t i = 0; i < input.length(); ++i) {
+        uint8_t byte = static_cast<uint8_t>(input[i]);
+        if (i == input.length() - 1) {
+            // For the last byte, shift left by 1 and set the least significant bit to 0
+            byte = (byte << 1) & 0xFE; // Ensure the least significant bit is 0
+        } else {
+            // For other bytes, shift left by 1 and set the least significant bit to 1
+            byte = (byte << 1) | 1; // Ensure the least significant bit is 1
+        }
+        result.push_back(byte);
+    }
+
+    return result;
 }
 
 

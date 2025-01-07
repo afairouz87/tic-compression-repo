@@ -520,6 +520,8 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
             if(serial == 0) { // NOT FOUND in the hash table - SPECIAL codeWord
                 // Call a function to generate a special codeWord
                 // ... To-Do ...
+                byteCodes = SPECIAL_CODE_WORD_GENERATOR(word);
+                lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)); // next special codeWord
             }
             if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding
                 inputNumber = serial; // add the offset if the reserved codeWords (i.e. space, newline, ..)
