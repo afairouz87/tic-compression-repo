@@ -53,6 +53,7 @@ int main() {
 
     cout << "hash map [test2] = " << hashMap["test2"] << endl;
     cout << "hash map [" << lookup_String << "] = " << hashMap[lookup_String] << endl;
+    cout << "String[3] = " << lookup_String[3] << endl;
 
     return 0;
 
