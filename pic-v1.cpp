@@ -101,6 +101,8 @@ vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
 //vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input);
 
+// Hello Test
+
 uint8_t Mask_Single_Byte(uint32_t number);
 uint32_t Shift_Left_with_One_Inserted(uint32_t number);
 uint32_t Shift_Left_with_Zero_Inserted(uint32_t number);
