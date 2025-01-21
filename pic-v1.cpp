@@ -99,6 +99,8 @@ vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
+string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes);
+string SPECIAL_CODE_WORD_READER(ifstream *filePtr);
 //vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input);
 
 // Hello Test
@@ -676,6 +678,105 @@ uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count){
     return final | (tmp << (7*count));
 }
 
+/*
+NOTE: 'cerr' function.
+In C++, cerr is the standard error stream used to output the errors. 
+It is an instance of the ostream class and is un-buffered, 
+so it is used when we need to display the error message immediately and 
+does not store the error message to display later. 
+The ‘c’ in cerr refers to “character” and ‘err’ means “error”, 
+Hence cerr means “character error”.
+On the other hand, cout is used for standard output, 
+and the string message may be buffered and 
+displayed after the program execution completes.
+*/
+
+string SPECIAL_CODE_WORD_READER_BYTES(ifstream *filePtr) {
+    if (!filePtr || !filePtr->is_open()) {
+        cerr << "Error: Invalid or unopened file pointer!" << endl;
+        return "";
+    }
+
+    // Read the size byte (first byte)
+    uint8_t sizeByte;
+    filePtr->read(reinterpret_cast<char*>(&sizeByte), sizeof(uint8_t));
+    if (filePtr->eof()) {
+        cerr << "Error: File is empty or invalid!" << endl;
+        return "";
+    }
+
+    // Determine the number of characters
+    size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
+
+    // Read the remaining bytes (numCharacters bytes)
+    vector<uint8_t> bytes(numCharacters);
+    filePtr->read(reinterpret_cast<char*>(bytes.data()), numCharacters);
+
+    // Check if the number of bytes read matches the expected number
+    if (filePtr->gcount() != static_cast<streamsize>(numCharacters)) {
+        cerr << "Error: File does not contain the expected number of bytes!" << endl;
+        return "";
+    }
+
+    // Decode the bytes into a string
+    string result;
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        uint8_t byte = bytes[i];
+        if (i == bytes.size() - 1) {
+            // Last byte: Right shift and ensure the least significant bit is 0
+            byte = byte >> 1; // Drop the LSB
+        } else {
+            // Other bytes: Right shift and ensure the least significant bit was 1
+            if ((byte & 0x01) != 1) {
+                cerr << "Error: Invalid byte format!" << endl;
+                return "";
+            }
+            byte = byte >> 1; // Drop the LSB
+        }
+        result += static_cast<char>(byte); // Append to the string
+    }
+
+    return result;
+}
+
+string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes) {
+    // Ensure the vector has at least one byte (the size byte)
+    if (bytes.empty()) {
+        cerr << "Error: Empty byte vector!" << endl;
+        return "";
+    }
+
+    // Extract the size byte and determine the number of characters
+    uint8_t sizeByte = bytes[0];
+    size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
+
+    // Validate that the size matches the vector length
+    if (bytes.size() != numCharacters + 1) {
+        cerr << "Error: Byte vector size does not match encoded size!" << endl;
+        return "";
+    }
+
+    string result;
+
+    // Decode the remaining bytes
+    for (size_t i = 1; i < bytes.size(); ++i) {
+        uint8_t byte = bytes[i];
+        if (i == bytes.size() - 1) {
+            // Last byte: Right shift and ensure the least significant bit is 0
+            byte = byte >> 1; // Drop the LSB
+        } else {
+            // Other bytes: Right shift and ensure the least significant bit was 1
+            if ((byte & 0x01) != 1) {
+                cerr << "Error: Invalid byte format!" << endl;
+                return "";
+            }
+            byte = byte >> 1; // Drop the LSB
+        }
+        result += static_cast<char>(byte); // Append to the string
+    }
+
+    return result;
+}
 
 /*
 'SPECIAL_CODE_GENERATOR' function:

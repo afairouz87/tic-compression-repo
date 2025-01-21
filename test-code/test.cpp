@@ -14,6 +14,7 @@
 using namespace std;
 
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
+string SPECIAL_CODE_WORD_READER(vector<uint8_t> bytes);
 
 void TWO_BYTE_CODE_GENERATOR(uint32_t input);
 void THREE_BYTE_CODE_GENERATOR(uint32_t input);
@@ -58,10 +59,16 @@ int main() {
     cout << "String[3] = " << lookup_String[3] << endl;
 
     // Test the special code generator function
-    string myString1 = "Abbas";
-    vector<uint8_t> byteCode = SPECIAL_CODE_WORD_GENERATOR(myString1);
+    string inString1 = "Jassim";
+    vector<uint8_t> byteCode = SPECIAL_CODE_WORD_GENERATOR(inString1);
+    cout << "\nInput Special String: " << inString1 << endl;
+    cout << "\nEncoded byteCodes:\n";
     for (size_t i=0; i < byteCode.size(); i++)
         cout << hex << static_cast<int>(byteCode[i]) << endl;
+
+    string outString1 = SPECIAL_CODE_WORD_READER(byteCode);
+    cout << "\nDecode the byteCodes..\n";
+    cout << "Decoded String: " << outString1 << endl;
 
     cout << endl;
 
@@ -194,6 +201,44 @@ size_t countLinesInFile(const string &filePath) {
     return lineCount;
 }
 
+string SPECIAL_CODE_WORD_READER(vector<uint8_t> bytes) {
+    // Ensure the vector has at least one byte (the size byte)
+    if (bytes.empty()) {
+        cerr << "Error: Empty byte vector!" << endl;
+        return "";
+    }
+
+    // Extract the size byte and determine the number of characters
+    uint8_t sizeByte = bytes[0];
+    size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
+
+    // Validate that the size matches the vector length
+    if (bytes.size() != numCharacters + 1) {
+        cerr << "Error: Byte vector size does not match encoded size!" << endl;
+        return "";
+    }
+
+    string result;
+
+    // Decode the remaining bytes
+    for (size_t i = 1; i < bytes.size(); ++i) {
+        uint8_t byte = bytes[i];
+        if (i == bytes.size() - 1) {
+            // Last byte: Right shift and ensure the least significant bit is 0
+            byte = byte >> 1; // Drop the LSB
+        } else {
+            // Other bytes: Right shift and ensure the least significant bit was 1
+            if ((byte & 0x01) != 1) {
+                cerr << "Error: Invalid byte format!" << endl;
+                return "";
+            }
+            byte = byte >> 1; // Drop the LSB
+        }
+        result += static_cast<char>(byte); // Append to the string
+    }
+
+    return result;
+}
 
 /*
 'SPECIAL_CODE_GENERATOR' function:
