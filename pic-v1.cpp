@@ -614,16 +614,23 @@ uint8_t Decompression_Function(){
             else if(count == 2) // THREE CODE
                 finalSerial += THREE_BYTE_OFFSET;
             
-            if(finalSerial == 0){ // space
+
+            if(finalSerial == SPACE_CODE){ // space
                 outFile << " ";
             }
-            else if (finalSerial == 1){ // newline
+            else if (finalSerial == NEW_LINE_CODE){ // newline
                 //cout << "NEW LINE\n";
                 outFile << "\n";
             }
-            else if (finalSerial == 2){ // next uppercase character
+            else if (finalSerial == NEXT_CAPITAL_CODE){ // next uppercase (capital letter) character
                 //cout << "NEXT CAP\n";
                 NEXT_CAP = true;
+            }
+            else if (finalSerial == NEXT_SPECIAL_CODE){ // next special codeWord
+                // next special codeWord bytes ...
+                // To-Do ...
+                word = SPECIAL_CODE_WORD_READER(&inFile);
+                outFile << word;
             }
             else{ // check the dictionary hash table
                 
@@ -691,7 +698,7 @@ and the string message may be buffered and
 displayed after the program execution completes.
 */
 
-string SPECIAL_CODE_WORD_READER_BYTES(ifstream *filePtr) {
+string SPECIAL_CODE_WORD_READER(ifstream *filePtr) {
     if (!filePtr || !filePtr->is_open()) {
         cerr << "Error: Invalid or unopened file pointer!" << endl;
         return "";
@@ -838,20 +845,6 @@ vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input)
     uint8_t byte2 = Shift_Right_Seven_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
     byte2 = Shift_Left_with_Zero_Inserted(byte2); // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
     codeWord.push_back(byte2);
-
-    return codeWord;
-}
-
-
-/*
-'THREE_BYTE_CODE_GENERATOR' function:
-Generate a 3-byte code of EPIC algorithm
-*/
-vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input)
-{
-    vector<uint8_t> codeWord;
-    uint8_t byte1, byte2, byte3;
-
 
     return codeWord;
 }
