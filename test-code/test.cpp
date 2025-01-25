@@ -7,11 +7,13 @@
 #include <cctype> // For std::ispunct
 #include <iomanip> // For hex formatting
 #include <cstdint> // For uint8_t
+#include <chrono> // for execution time calculation
 
 #define TWO_SEVEN pow(2,7) - 1
 #define TWO_FOURTEEN pow(2,14) - 1
 
 using namespace std;
+using namespace chrono;
 
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
 string SPECIAL_CODE_WORD_READER(vector<uint8_t> bytes);

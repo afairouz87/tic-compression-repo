@@ -24,10 +24,11 @@ https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 #include <bitset>
 #include <iomanip>
 
-#include <chrono> // for sleep
+#include <chrono> // for sleep and execution time calculation
 #include <thread>
 
 using namespace std;
+using namespace chrono;
 
 /*
 *** Notes for the byte codes range calculations ***
@@ -156,6 +157,9 @@ string outputFileNameText = "output.txt";
 //int main(int argc, char * argv[]) {
 int main() {
 
+    // Record the start time
+    auto start = high_resolution_clock::now();
+
     uint32_t numberOfWords = countLinesInFile(dictFilename);
     cout << "Number of lines in the dictionary file: " << numberOfWords << endl;
 
@@ -208,6 +212,14 @@ int main() {
 
     delete[] dictMapCodeArray;
     dictMapCodeArray = nullptr;
+
+    // Record the end time
+    auto end = high_resolution_clock::now();
+
+    // Calculate the duration in microseconds (or other units)
+    auto duration = duration_cast<milliseconds>(end - start);
+
+    cout << "Total execution time: " << duration.count() << " milliseconds" << endl;
 
     return 0;
 } // main function

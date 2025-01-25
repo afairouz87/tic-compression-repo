@@ -5,7 +5,9 @@
         "ostream": "cpp",
         "vector": "cpp",
         "string": "cpp",
-        "iosfwd": "cpp"
+        "iosfwd": "cpp",
+        "__locale": "cpp",
+        "ios": "cpp"
     },
 
     "editor.fontSize": 12,
