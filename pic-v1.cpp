@@ -743,15 +743,16 @@ string SPECIAL_CODE_WORD_READER(ifstream *filePtr) {
         uint8_t byte = bytes[i];
         if (i == bytes.size() - 1) {
             // Last byte: Right shift and ensure the least significant bit is 0
-            byte = byte >> 1; // Drop the LSB
+            // byte = byte >> 1; // Drop the LSB
         } else {
             // Other bytes: Right shift and ensure the least significant bit was 1
             if ((byte & 0x01) != 1) {
                 cerr << "Error: Invalid byte format!" << endl;
                 return "";
             }
-            byte = byte >> 1; // Drop the LSB
+            // byte = byte >> 1; // Drop the LSB
         }
+        byte = byte >> 1; // Drop the LSB
         result += static_cast<char>(byte); // Append to the string
     }
 
@@ -818,7 +819,7 @@ vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input) {
             byte = (byte << 1) & 0xFE; // Ensure the least significant bit is 0
         } else {
             // For other bytes, shift left by 1 and set the least significant bit to 1
-            byte = (byte << 1) | 1; // Ensure the least significant bit is 1
+            byte = (byte << 1) | 0x01; // Ensure the least significant bit is 1
         }
         result.push_back(byte);
     }
