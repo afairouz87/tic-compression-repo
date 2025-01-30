@@ -151,6 +151,9 @@ string outputFileNameBin = "output.bin";
 string inputFileNameBin = "output.bin"; 
 string outputFileNameText = "output.txt";
 
+// Counters for debugging
+int specialCodeWordCounter = 0;
+
 // *********************************************
 //            Main Function
 // *********************************************
@@ -220,6 +223,7 @@ int main() {
     auto duration = duration_cast<milliseconds>(end - start);
 
     cout << "Total execution time: " << duration.count() << " milliseconds" << endl;
+    cout << "Number of special codeWords = " << specialCodeWordCounter << endl;
 
     return 0;
 } // main function
@@ -450,33 +454,36 @@ vector<string> processLineChar(const string &line) {
                 startsWithUppercase = true; // Set the flag if the first character is uppercase
                 //cout << "Uppercase character..\n"; // for testing... 
             }
-            ch = tolower(ch); // set the uppercase character to lowercase character.
+            //ch = tolower(ch); // set the uppercase character to lowercase character.
             word += ch;
         } 
-        else if (ch == '\'' || (i + 2 <= line.size() && line.substr(i, 3) == "’")) {
-            if (!word.empty()) {
-                result.push_back(word);
-                word.clear();
-            }
-            result.push_back("'");
+        else{
+            //word[0] = tolower(word[0]); // set the first uppercase character to lowercase character.
+            if (ch == '\'' || (i + 2 <= line.size() && line.substr(i, 3) == "’")) {
+                if (!word.empty()) {
+                    result.push_back(word);
+                    word.clear();
+                }
+                result.push_back("'");
 
-            // Check for 's' after the apostrophe
-            if (i + 1 < line.size() && line[i + 1] == 's') {
-                result.push_back("s");
-                ++i; // Skip the 's'
+                // Check for 's' after the apostrophe
+                if (i + 1 < line.size() && line[i + 1] == 's') {
+                    result.push_back("s");
+                    ++i; // Skip the 's'
+                }
+            } else if (ispunct(ch)) { // Handle punctuation
+                if (!word.empty()) {
+                    result.push_back(word);
+                    word.clear();
+                }
+                result.push_back(string(1, ch)); // Add punctuation as a separate string
+            } else if (isspace(ch)) { // Handle spaces
+                if (!word.empty()) {
+                    result.push_back(word);
+                    word.clear();
+                }
+                result.push_back(string(1, ' ')); // Add space as a separate string -- SPACE
             }
-        } else if (ispunct(ch)) { // Handle punctuation
-            if (!word.empty()) {
-                result.push_back(word);
-                word.clear();
-            }
-            result.push_back(string(1, ch)); // Add punctuation as a separate string
-        } else if (isspace(ch)) { // Handle spaces
-            if (!word.empty()) {
-                result.push_back(word);
-                word.clear();
-            }
-            result.push_back(string(1, ' ')); // Add space as a separate string -- SPACE
         }
 
         startsWithUppercase = false;
@@ -529,29 +536,41 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
             NOTE:
             - In the 'unordered_map', the returned value of 'not found' hash key is zero '0'.
             */
-            serial = dictMapWord[word]; // read th evalue of the word in the dictionary hash table
+            string tmpWord = word;
+            tmpWord[0] = tolower(tmpWord[0]); // set the first uppercase character to lowercase character.
+            serial = dictMapWord[tmpWord]; // read the value of the word in the dictionary hash table
             
             if(serial == 0) { // NOT FOUND in the hash table - SPECIAL codeWord
                 // Call a function to generate a special codeWord
                 // ... To-Do ...
                 byteCodes = SPECIAL_CODE_WORD_GENERATOR(word);
                 lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)); // next special codeWord
-            }
-            if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding
-                inputNumber = serial; // add the offset if the reserved codeWords (i.e. space, newline, ..)
-                byteCodes = ONE_BYTE_CODE_GENERATOR(inputNumber); // generate a single byte codeWord
-            }
-            else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
-                inputNumber = serial - TWO_BYTE_OFFSET;
-                byteCodes = TWO_BYTE_CODE_GENERATOR(inputNumber); // generate a two bytes codeWord
-            }
-            else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){
-                inputNumber = serial - (THREE_BYTE_OFFSET);
-                byteCodes = THREE_BYTE_CODE_GENERATOR(inputNumber); // generate a three bytes codeWord
+
+                // increment the special code word counter
+                specialCodeWordCounter++;
+                
+                // for debug ..
+                // cout << "special code: " << word << endl;
             }
             else{
-                // Add word to the map with the current serial number
-                //dictMapWord[word] = serial;
+                //word = tmpWord; // set the first character to a lowercase letter
+
+                if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding
+                    inputNumber = serial; // add the offset if the reserved codeWords (i.e. space, newline, ..)
+                    byteCodes = ONE_BYTE_CODE_GENERATOR(inputNumber); // generate a single byte codeWord
+                }
+                else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
+                    inputNumber = serial - TWO_BYTE_OFFSET;
+                    byteCodes = TWO_BYTE_CODE_GENERATOR(inputNumber); // generate a two bytes codeWord
+                }
+                else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){
+                    inputNumber = serial - (THREE_BYTE_OFFSET);
+                    byteCodes = THREE_BYTE_CODE_GENERATOR(inputNumber); // generate a three bytes codeWord
+                }
+                else{
+                    // Add word to the map with the current serial number
+                    //dictMapWord[word] = serial;
+                }
             }
 
             // Push the byteCodes to the lineCodeWords vector
