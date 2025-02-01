@@ -82,14 +82,14 @@ the reserved codeWords (space, newline, nextCapital).
 #define NEXT_CAPITAL_CODE 0x2
 #define NEXT_SPECIAL_CODE 0x3
 
-#define TWO_BYTE_OFFSET 64 // = pow(2,6)
-#define THREE_BYTE_OFFSET 4160 // = ( pow(2,6) + pow(2,12) )
-#define FOUR_BYTE_OFFSET 266304 // = ( pow(2,6) + pow(2,12) + pow(2,18) )
+#define TWO_BYTE_OFFSET 128 // = pow(2,7)
+#define THREE_BYTE_OFFSET 16512 // = ( pow(2,7) + pow(2,14) )
+#define FOUR_BYTE_OFFSET 2113664 // = ( pow(2,7) + pow(2,14) + pow(2,21) )
 #define ONE_BYTE_LOWER_BOUND CODE_WORD_OFFSET
-#define ONE_BYTE_BOUND TWO_BYTE_OFFSET // = pow(2,6)
-#define TWO_BYTE_BOUND THREE_BYTE_OFFSET // = ( pow(2,6) + pow(2,12) )
-#define THREE_BYTE_BOUND FOUR_BYTE_OFFSET // = ( pow(2,6) + pow(2,12) + pow(2,18) )
-#define FOUR_BYTE_BOUND 17043520 // = ( pow(2,6) + pow(2,12) + pow(2,18) + pow(2,24))
+#define ONE_BYTE_BOUND 128 // = pow(2,7)
+#define TWO_BYTE_BOUND 16512 // = ( pow(2,7) + pow(2,14) )
+#define THREE_BYTE_BOUND 2113664 // = ( pow(2,7) + pow(2,14) + pow(2,21) )
+#define FOUR_BYTE_BOUND 270549120 // = ( pow(2,7) + pow(2,14) + pow(2,21) + pow(2,28) )
 
 
 uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
@@ -100,10 +100,8 @@ vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
-vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR_PIC(string input);
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes);
 string SPECIAL_CODE_WORD_READER(ifstream *filePtr);
-string SPECIAL_CODE_WORD_READER_PIC(ifstream &inFile);
 //vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input);
 
 // Hello Test
@@ -147,11 +145,11 @@ string dictFilename = "dict.txt";
 //string inputFileNameText = "input_file.txt"; 
 // Compression
 string inputFileNameText = "test1.txt"; 
-string outputFileNameBin = "output_old.bin";
+string outputFileNameBin = "output.bin";
 
 // Decompression
-string inputFileNameBin = "output_old.bin"; 
-string outputFileNameText = "output_old.txt";
+string inputFileNameBin = "output.bin"; 
+string outputFileNameText = "output.txt";
 
 // Counters for debugging
 int specialCodeWordCounter = 0;
@@ -545,7 +543,7 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
             if(serial == 0) { // NOT FOUND in the hash table - SPECIAL codeWord
                 // Call a function to generate a special codeWord
                 // ... To-Do ...
-                byteCodes = SPECIAL_CODE_WORD_GENERATOR_PIC(word);
+                byteCodes = SPECIAL_CODE_WORD_GENERATOR(word);
                 lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)); // next special codeWord
 
                 // increment the special code word counter
@@ -662,7 +660,7 @@ uint8_t Decompression_Function(){
             else if (finalSerial == NEXT_SPECIAL_CODE){ // next special codeWord
                 // next special codeWord bytes ...
                 // To-Do ...
-                word = SPECIAL_CODE_WORD_READER_PIC(inFile);
+                word = SPECIAL_CODE_WORD_READER(&inFile);
                 outFile << word;
             }
             else{ // check the dictionary hash table
@@ -731,94 +729,54 @@ and the string message may be buffered and
 displayed after the program execution completes.
 */
 
-string SPECIAL_CODE_WORD_READER_PIC(ifstream &inFile) {
-    if (!inFile.is_open()) {
-        cerr << "Error: File is not open!" << endl;
+string SPECIAL_CODE_WORD_READER(ifstream *filePtr) {
+    if (!filePtr || !filePtr->is_open()) {
+        cerr << "Error: Invalid or unopened file pointer!" << endl;
         return "";
     }
 
-    // Read the first byte to get the number of remaining bytes
-    uint8_t firstByte;
-    if (!inFile.read(reinterpret_cast<char*>(&firstByte), 1)) {
-        cerr << "Error: Failed to read from file!" << endl;
+    // Read the size byte (first byte)
+    uint8_t sizeByte;
+    filePtr->read(reinterpret_cast<char*>(&sizeByte), sizeof(uint8_t));
+    if (filePtr->eof()) {
+        cerr << "Error: File is empty or invalid!" << endl;
         return "";
     }
 
-    uint8_t numRemainingBytes = (firstByte & 0b01111110) >> 1; // Extract middle 6 bits
+    // Determine the number of characters
+    size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
 
-    vector<uint8_t> bytes(numRemainingBytes);
-    
-    // Read the remaining bytes from the file
-    if (!inFile.read(reinterpret_cast<char*>(bytes.data()), numRemainingBytes)) {
-        cerr << "Error: Failed to read all bytes from file!" << endl;
+    // Read the remaining bytes (numCharacters bytes)
+    vector<uint8_t> bytes(numCharacters);
+    filePtr->read(reinterpret_cast<char*>(bytes.data()), numCharacters);
+
+    // Check if the number of bytes read matches the expected number
+    if (filePtr->gcount() != static_cast<streamsize>(numCharacters)) {
+        cerr << "Error: File does not contain the expected number of bytes!" << endl;
         return "";
     }
 
-    string decodedString;
-
-    // Process remaining bytes two at a time
-    for (size_t i = 0; i < bytes.size(); i += 2) {
-        uint8_t highByte = (bytes[i] & 0b01111110) >> 1;  // Extract middle 6 bits
-        uint8_t lowByte = (bytes[i + 1] & 0b01111110) >> 1; // Extract middle 6 bits
-
-        // Combine high and low bytes to reconstruct the ASCII character
-        char originalChar = (highByte << 6) | lowByte;
-
-        decodedString += originalChar;
+    // Decode the bytes into a string
+    string result;
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        uint8_t byte = bytes[i];
+        if (i == bytes.size() - 1) {
+            // Last byte: Right shift and ensure the least significant bit is 0
+            // byte = byte >> 1; // Drop the LSB
+        } else {
+            // Other bytes: Right shift and ensure the least significant bit was 1
+            if ((byte & 0x01) != 1) {
+                cerr << "Error: Invalid byte format!" << endl;
+                return "";
+            }
+            // byte = byte >> 1; // Drop the LSB
+        }
+        byte = byte >> 1; // Drop the LSB
+        result += static_cast<char>(byte); // Append to the string
     }
 
-    return decodedString;
+    return result;
 }
-
-
-// string SPECIAL_CODE_WORD_READER(ifstream *filePtr) {
-//     if (!filePtr || !filePtr->is_open()) {
-//         cerr << "Error: Invalid or unopened file pointer!" << endl;
-//         return "";
-//     }
-
-//     // Read the size byte (first byte)
-//     uint8_t sizeByte;
-//     filePtr->read(reinterpret_cast<char*>(&sizeByte), sizeof(uint8_t));
-//     if (filePtr->eof()) {
-//         cerr << "Error: File is empty or invalid!" << endl;
-//         return "";
-//     }
-
-//     // Determine the number of characters
-//     size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
-
-//     // Read the remaining bytes (numCharacters bytes)
-//     vector<uint8_t> bytes(numCharacters);
-//     filePtr->read(reinterpret_cast<char*>(bytes.data()), numCharacters);
-
-//     // Check if the number of bytes read matches the expected number
-//     if (filePtr->gcount() != static_cast<streamsize>(numCharacters)) {
-//         cerr << "Error: File does not contain the expected number of bytes!" << endl;
-//         return "";
-//     }
-
-//     // Decode the bytes into a string
-//     string result;
-//     for (size_t i = 0; i < bytes.size(); ++i) {
-//         uint8_t byte = bytes[i];
-//         if (i == bytes.size() - 1) {
-//             // Last byte: Right shift and ensure the least significant bit is 0
-//             // byte = byte >> 1; // Drop the LSB
-//         } else {
-//             // Other bytes: Right shift and ensure the least significant bit was 1
-//             if ((byte & 0x01) != 1) {
-//                 cerr << "Error: Invalid byte format!" << endl;
-//                 return "";
-//             }
-//             // byte = byte >> 1; // Drop the LSB
-//         }
-//         byte = byte >> 1; // Drop the LSB
-//         result += static_cast<char>(byte); // Append to the string
-//     }
-
-//     return result;
-// }
 
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes) {
     // Ensure the vector has at least one byte (the size byte)
@@ -858,35 +816,6 @@ string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes) {
 
     return result;
 }
-
-
-
-vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR_PIC(string input) {
-    vector<uint8_t> result;
-    uint8_t numChars = static_cast<uint8_t>(input.length() * 2); // input.length() * 2 => each ASCII character is represented using two bytes
-    
-    // Encode the first byte: MSB = 1, LSB = 1, middle 6 bits = numChars
-    uint8_t firstByte = (0b10000001) | (numChars << 1);
-    result.push_back(firstByte);
-    
-    // Process each ASCII character into two bytes (high byte and low byte)
-    for (size_t i = 0; i < input.length(); ++i) {
-        uint8_t asciiVal = static_cast<uint8_t>(input[i]);
-        uint8_t highByte = ((asciiVal >> 6) & 0x03) << 1 | 1; // Extract top 2 bits, LSB = 1
-        uint8_t lowByte = ((asciiVal & 0x3F) << 1);           // Extract bottom 6 bits
-        
-        // Set LSB of lowByte to 1 if not the last character, else set to 0
-        if (i < input.length() - 1) {
-            lowByte |= 1;
-        }
-        
-        result.push_back(highByte);
-        result.push_back(lowByte);
-    }
-    
-    return result;
-}
-
 
 /*
 'SPECIAL_CODE_GENERATOR' function:

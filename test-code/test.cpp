@@ -15,7 +15,9 @@
 using namespace std;
 using namespace chrono;
 
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR_PIC(string input);
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
+string SPECIAL_CODE_WORD_READER_PIC(vector<uint8_t> bytes);
 string SPECIAL_CODE_WORD_READER(vector<uint8_t> bytes);
 
 void TWO_BYTE_CODE_GENERATOR(uint32_t input);
@@ -61,15 +63,20 @@ int main() {
     cout << "String[3] = " << lookup_String[3] << endl;
 
     // Test the special code generator function
-    string inString1 = "Jassim";
-    vector<uint8_t> byteCode = SPECIAL_CODE_WORD_GENERATOR(inString1);
+    string inString1 = "Test";
+    vector<uint8_t> byteCode = SPECIAL_CODE_WORD_GENERATOR_PIC(inString1);
     cout << "\nInput Special String: " << inString1 << endl;
     cout << "\nEncoded byteCodes:\n";
     for (size_t i=0; i < byteCode.size(); i++)
         cout << hex << static_cast<int>(byteCode[i]) << endl;
 
-    string outString1 = SPECIAL_CODE_WORD_READER(byteCode);
+    string outString1 = SPECIAL_CODE_WORD_READER_PIC(byteCode);
     cout << "\nDecode the byteCodes..\n";
+    // for debug ...
+    for(int i=0; i<outString1.size(); i++){
+        char c = outString1[i];
+        cout << c << endl;
+    }
     cout << "Decoded String: " << outString1 << endl;
 
     cout << endl;
@@ -268,6 +275,66 @@ vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input) {
         result.push_back(byte);
     }
 
+    return result;
+}
+
+
+string SPECIAL_CODE_WORD_READER_PIC(vector<uint8_t> bytes) {
+    if (bytes.empty()) {
+        return "";
+    }
+
+    // Extract number of remaining bytes from the first byte (middle 6 bits)
+    uint8_t numRemainingBytes = (bytes[0] & 0b01111110) >> 1; 
+
+    cout << "numRemainingBytes = " << static_cast<int>(numRemainingBytes) << endl;
+    cout << "bytes.size() - 1 = " << bytes.size() - 1 << endl;
+
+    // Verify that the number of remaining bytes matches the actual size
+    if (numRemainingBytes != bytes.size() - 1) {
+        cerr << "Error: Mismatch in expected byte count!" << endl;
+        return "";
+    }
+
+    string decodedString;
+    
+    // Process remaining bytes two at a time
+    for (size_t i = 1; i < bytes.size(); i += 2) {
+        uint8_t highByte = (bytes[i] & 0b01111110) >> 1;  // Extract middle 6 bits
+        uint8_t lowByte = (bytes[i + 1] & 0b01111110) >> 1; // Extract middle 6 bits
+
+        // Combine high and low bytes to reconstruct the ASCII character
+        char originalChar = (highByte << 6) | lowByte;
+
+        decodedString += originalChar;
+    }
+
+    return decodedString;
+}
+
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR_PIC(string input) {
+    vector<uint8_t> result;
+    uint8_t numChars = static_cast<uint8_t>(input.length() * 2); // input.length() * 2 => each ASCII character is represented using two bytes
+    
+    // Encode the first byte: MSB = 1, LSB = 1, middle 6 bits = numChars
+    uint8_t firstByte = (0b10000001) | (numChars << 1);
+    result.push_back(firstByte);
+    
+    // Process each ASCII character into two bytes (high byte and low byte)
+    for (size_t i = 0; i < input.length(); ++i) {
+        uint8_t asciiVal = static_cast<uint8_t>(input[i]);
+        uint8_t highByte = ((asciiVal >> 6) & 0x03) << 1 | 1; // Extract top 2 bits, LSB = 1
+        uint8_t lowByte = ((asciiVal & 0x3F) << 1);           // Extract bottom 6 bits
+        
+        // Set LSB of lowByte to 1 if not the last character, else set to 0
+        if (i < input.length() - 1) {
+            lowByte |= 1;
+        }
+        
+        result.push_back(highByte);
+        result.push_back(lowByte);
+    }
+    
     return result;
 }
 
