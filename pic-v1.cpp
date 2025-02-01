@@ -4,7 +4,7 @@ Title: Enhanced PIC (EPIC) compression
 Author: Abbas A. Fairouz
 Version: 1.0
 Created: Sep. 17, 2024
-Updated: Nov. 25, 2024
+Updated: Feb. 1, 2025
 
 Word frequency reference:
 https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
@@ -24,6 +24,7 @@ https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 #include <vector>
 #include <bitset>
 #include <iomanip>
+#include <algorithm>
 
 #include <chrono> // for sleep and execution time calculation
 #include <thread>
@@ -1104,7 +1105,7 @@ uint32_t countLinesInFile(const string &filePath) {
     }
 
     // Count newline characters using std::count and istreambuf_iterator
-    size_t lineCount = count(istreambuf_iterator<char>(file),
+    size_t lineCount = std::count(istreambuf_iterator<char>(file),
                              istreambuf_iterator<char>(), '\n');
 
     file.close();
