@@ -176,6 +176,7 @@ int main() {
     // cout << "Two byte mid = " << TWO_BYTE_MID << "bits = " << bitset<14> (TWO_BYTE_MID) << endl;
     // ****************
 
+    // ****** Commepnted TMP ABBAS ************
     // Compression
     // Building the dictionary hash table for compression
     cout << "Building the dictionary hash table for compression.." << endl;

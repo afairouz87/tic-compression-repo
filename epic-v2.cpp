@@ -1,36 +1,19 @@
 /*
 
-Title: PIC compression
+Title: Enhanced PIC (EPIC) compression
 Author: Abbas A. Fairouz
-Version: 1.0
-Created: Sep. 17, 2024
-Updated: Feb. 1, 2025
+Version: 2.0
+Note: multi-threaded version
+Created: Feb. 21, 2025
+Updated: Feb. 23, 2025
 
 Word frequency reference:
 https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 
 */
 
+#include "epic-v2.h"
 
-
-#include <iostream>
-#include <cstdint> // For uint8_t
-#include <fstream>
-#include <sstream>
-#include <unordered_map>  // hash table library: (key,value) pair
-#include <string>
-#include <math.h>  // math library
-#include <cctype> // For std::ispunct
-#include <vector>
-#include <bitset>
-#include <iomanip>
-#include <algorithm>
-
-#include <chrono> // for sleep and execution time calculation
-#include <thread>
-
-using namespace std;
-using namespace chrono;
 
 /*
 *** Notes for the byte codes range calculations ***
@@ -72,69 +55,6 @@ Test Mac Pro
 
 */
 
-/*
-This is used to shift the codeWord by 
-the reserved codeWords (space, newline, nextCapital).
-*/ 
-#define CODE_WORD_OFFSET 4
-
-// Reserved codeWords: space, new line, next capital
-#define SPACE_CODE 0x0
-#define NEW_LINE_CODE 0x1
-#define NEXT_CAPITAL_CODE 0x2
-#define NEXT_SPECIAL_CODE 0x3
-
-#define TWO_BYTE_OFFSET 64 // = pow(2,6)
-#define THREE_BYTE_OFFSET 4160 // = ( pow(2,6) + pow(2,12) )
-#define FOUR_BYTE_OFFSET 266304 // = ( pow(2,6) + pow(2,12) + pow(2,18) )
-#define ONE_BYTE_LOWER_BOUND CODE_WORD_OFFSET
-#define ONE_BYTE_BOUND TWO_BYTE_OFFSET // = pow(2,6)
-#define TWO_BYTE_BOUND THREE_BYTE_OFFSET // = ( pow(2,6) + pow(2,12) )
-#define THREE_BYTE_BOUND FOUR_BYTE_OFFSET // = ( pow(2,6) + pow(2,12) + pow(2,18) )
-#define FOUR_BYTE_BOUND 17043520 // = ( pow(2,6) + pow(2,12) + pow(2,18) + pow(2,24))
-
-
-uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
-
-uint8_t Build_Dictionary_Table_Compression();
-uint8_t Build_Dictionary_Table_Decompression();
-vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input);
-vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input);
-vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
-vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
-vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR_PIC(string input);
-string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes);
-string SPECIAL_CODE_WORD_READER(ifstream *filePtr);
-string SPECIAL_CODE_WORD_READER_PIC(ifstream &inFile);
-//vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input);
-
-// Hello Test
-
-uint8_t Mask_Single_Byte(uint32_t number);
-uint32_t Shift_Left_with_One_Inserted(uint32_t number);
-uint32_t Shift_Left_with_Zero_Inserted(uint32_t number);
-uint32_t Shift_Right_Seven_Positions(uint32_t number);
-
-uint8_t Compression_Function();
-uint8_t Decompression_Function();
-
-// Reading a plain text file functions
-uint8_t processFile(const string &filePath);
-vector<string> processLineChar(const string &line); // return a vector of strings
-//vector<string> processLineChar(const string &line, ofstream *file); // return a vector of strings
-//vector<uint8_t> processLineChar(const string &line, ofstream *file); // return a vector of strings
-vector<uint8_t> convertStringToCodeWord(vector<string> word);
-
-char checkStringEndsWithPunctuation(const string &str);
-void checkLinesInFile(const string &filePath);
-bool endsWithNewline(const string &str);
-
-void printBinaryFile(const string &filePath);
-
-uint32_t readCodeWords(vector<uint8_t> bytes);
-uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count);
-
-uint32_t countLinesInFile(const string &filePath); // read the number of words in the dictionary 
 
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
@@ -149,20 +69,40 @@ string dictFilename = "dict.txt";
 //string inputFileNameText = "input_file.txt"; 
 // Compression
 string inputFileNameText = "test1.txt"; 
-string outputFileNameBin = "output_old.bin";
+string outputFileNameBin = "output.bin";
 
 // Decompression
-string inputFileNameBin = "output_old.bin"; 
-string outputFileNameText = "output_old.txt";
+string inputFileNameBin = "output.bin"; 
+string outputFileNameText = "output.txt";
 
 // Counters for debugging
 int specialCodeWordCounter = 0;
 
+// 
+mutex fileMutex;
+
 // *********************************************
 //            Main Function
 // *********************************************
-//int main(int argc, char * argv[]) {
-int main() {
+int main(int argc, char * argv[]) {
+//int main() {
+
+    if (argc != 5 || string(argv[2]) != "-t") {
+        cerr << "Usage: " << argv[0] << " <input_text_file> -t <num_threads> <output_binary_file>" << endl;
+        return 1;
+    }
+
+    string inputFileText = argv[1];
+    string outputFileBin = argv[4];
+    int numThreads = 0;
+
+    try {
+        numThreads = stoi(argv[3]);
+        if (numThreads <= 0) throw invalid_argument("Number of threads must be positive");
+    } catch (const invalid_argument& e) {
+        cerr << "Invalid thread count: " << argv[3] << endl;
+        return 1;
+    }
 
     // Record the start time
     auto start = high_resolution_clock::now();
@@ -186,35 +126,41 @@ int main() {
     else
         cout << "Error in building the dictionary hash table!" << endl;
 
-    if(Compression_Function()==0)
-        cout << "The compression function is successful." << endl;
-    else
-        cout << "Error in running the compression function!" << endl;
+
+
+    // Send the text file to multiple compression threads
+    splitAndProcessTextFile(inputFileText, outputFileBin, numThreads);
+
+
+    // if(Compression_Function()==0)
+    //     cout << "The compression function is successful." << endl;
+    // else
+    //     cout << "Error in running the compression function!" << endl;
 
     // For testing ...
     //printBinaryFile(outputFileNameBin);
 
-    cout << "Sleep for one second..\n";
+    // cout << "Sleep for one second..\n";
 
 
 
 
-    this_thread::sleep_for(chrono::seconds(1));
+    // this_thread::sleep_for(chrono::seconds(1));
 
 
 
-    // Decompression
-    // Building the dictionary hash table for decompression
-    cout << "Building the dictionary hash table for decompression.." << endl;
-    if(Build_Dictionary_Table_Decompression()==0)
-        cout << "The dictionary hash table for decompression has been built successfully." << endl;
-    else
-        cout << "Error in building the dictionary hash table!" << endl;
+    // // Decompression
+    // // Building the dictionary hash table for decompression
+    // cout << "Building the dictionary hash table for decompression.." << endl;
+    // if(Build_Dictionary_Table_Decompression()==0)
+    //     cout << "The dictionary hash table for decompression has been built successfully." << endl;
+    // else
+    //     cout << "Error in building the dictionary hash table!" << endl;
 
-    if(Decompression_Function()==0)
-        cout << "The decompression function is successful." << endl;
-    else
-        cout << "Error in running the decompression function!" << endl;
+    // if(Decompression_Function()==0)
+    //     cout << "The decompression function is successful." << endl;
+    // else
+    //     cout << "Error in running the decompression function!" << endl;
 
 
     delete[] dictMapCodeArray;
@@ -377,15 +323,36 @@ uint8_t Build_Dictionary_Table_Compression(){
 
 
 // Function to read a file line by line and process each line
-uint8_t Compression_Function() {
-    ifstream inFile(inputFileNameText); // Open the file
+//uint8_t Compression_Function() {
+uint8_t Compression_Function(const string& inputFileText, streampos start, streampos end, const string& outputFileBin){
+
+    ifstream inFile(inputFileText); // Open the file
     if (!inFile) {
         cerr << "Error opening file: " << inputFileNameText << endl;
         return -1;
     }
 
+    // Set the file pointer to the start of this thread's chunk
+    inFile.seekg(start); // Move file pointer to start position
+
+    // Adjust the start position to the nearest newline
+    if (start > 0) { // Not the first chunk
+        string temp;
+        getline(inFile, temp); // Skip the partial line
+    }
+
+    // // Recalculate end within this thread to avoid race conditions
+    // streampos adjustedEnd = end;
+    // if (inFile.tellg() < end) {
+    //     inFile.seekg(end);
+    //     string temp;
+    //     getline(inFile, temp); // Move past partial line
+    //     adjustedEnd = inFile.tellg(); // Adjusted to the next newline
+    // }
+
+    lock_guard<mutex> lock(fileMutex);
     // Open the output file in binary mode and in append mode
-    ofstream outFile(outputFileNameBin, ios::binary | ios::app); 
+    ofstream outFile(outputFileBin, ios::binary | ios::app); 
     if (!outFile) {
         cerr << "Error: Could not open the file." << endl;
         return 1;
@@ -402,8 +369,9 @@ uint8_t Compression_Function() {
     string currentLine, nextLine;
 
     // Read the first line before entering the loop
+    //if (inFile.tellg() < end && getline(inFile, currentLine)) {
     if (getline(inFile, currentLine)) {
-        while (true) {
+        while (inFile.tellg() <= end) { // Check if the next position would exceed 'end'
             // Peek ahead to check for the next line
             if (getline(inFile, nextLine)) {
                 // Process the current line
@@ -547,7 +515,7 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
             if(serial == 0) { // NOT FOUND in the hash table - SPECIAL codeWord
                 // Call a function to generate a special codeWord
                 // ... To-Do ...
-                byteCodes = SPECIAL_CODE_WORD_GENERATOR_PIC(word);
+                byteCodes = SPECIAL_CODE_WORD_GENERATOR(word);
                 lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)); // next special codeWord
 
                 // increment the special code word counter
@@ -664,7 +632,7 @@ uint8_t Decompression_Function(){
             else if (finalSerial == NEXT_SPECIAL_CODE){ // next special codeWord
                 // next special codeWord bytes ...
                 // To-Do ...
-                word = SPECIAL_CODE_WORD_READER_PIC(inFile);
+                word = SPECIAL_CODE_WORD_READER(&inFile);
                 outFile << word;
             }
             else{ // check the dictionary hash table
@@ -733,94 +701,54 @@ and the string message may be buffered and
 displayed after the program execution completes.
 */
 
-string SPECIAL_CODE_WORD_READER_PIC(ifstream &inFile) {
-    if (!inFile.is_open()) {
-        cerr << "Error: File is not open!" << endl;
+string SPECIAL_CODE_WORD_READER(ifstream *filePtr) {
+    if (!filePtr || !filePtr->is_open()) {
+        cerr << "Error: Invalid or unopened file pointer!" << endl;
         return "";
     }
 
-    // Read the first byte to get the number of remaining bytes
-    uint8_t firstByte;
-    if (!inFile.read(reinterpret_cast<char*>(&firstByte), 1)) {
-        cerr << "Error: Failed to read from file!" << endl;
+    // Read the size byte (first byte)
+    uint8_t sizeByte;
+    filePtr->read(reinterpret_cast<char*>(&sizeByte), sizeof(uint8_t));
+    if (filePtr->eof()) {
+        cerr << "Error: File is empty or invalid!" << endl;
         return "";
     }
 
-    uint8_t numRemainingBytes = (firstByte & 0b01111110) >> 1; // Extract middle 6 bits
+    // Determine the number of characters
+    size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
 
-    vector<uint8_t> bytes(numRemainingBytes);
-    
-    // Read the remaining bytes from the file
-    if (!inFile.read(reinterpret_cast<char*>(bytes.data()), numRemainingBytes)) {
-        cerr << "Error: Failed to read all bytes from file!" << endl;
+    // Read the remaining bytes (numCharacters bytes)
+    vector<uint8_t> bytes(numCharacters);
+    filePtr->read(reinterpret_cast<char*>(bytes.data()), numCharacters);
+
+    // Check if the number of bytes read matches the expected number
+    if (filePtr->gcount() != static_cast<streamsize>(numCharacters)) {
+        cerr << "Error: File does not contain the expected number of bytes!" << endl;
         return "";
     }
 
-    string decodedString;
-
-    // Process remaining bytes two at a time
-    for (size_t i = 0; i < bytes.size(); i += 2) {
-        uint8_t highByte = (bytes[i] & 0b01111110) >> 1;  // Extract middle 6 bits
-        uint8_t lowByte = (bytes[i + 1] & 0b01111110) >> 1; // Extract middle 6 bits
-
-        // Combine high and low bytes to reconstruct the ASCII character
-        char originalChar = (highByte << 6) | lowByte;
-
-        decodedString += originalChar;
+    // Decode the bytes into a string
+    string result;
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        uint8_t byte = bytes[i];
+        if (i == bytes.size() - 1) {
+            // Last byte: Right shift and ensure the least significant bit is 0
+            // byte = byte >> 1; // Drop the LSB
+        } else {
+            // Other bytes: Right shift and ensure the least significant bit was 1
+            if ((byte & 0x01) != 1) {
+                cerr << "Error: Invalid byte format!" << endl;
+                return "";
+            }
+            // byte = byte >> 1; // Drop the LSB
+        }
+        byte = byte >> 1; // Drop the LSB
+        result += static_cast<char>(byte); // Append to the string
     }
 
-    return decodedString;
+    return result;
 }
-
-
-// string SPECIAL_CODE_WORD_READER(ifstream *filePtr) {
-//     if (!filePtr || !filePtr->is_open()) {
-//         cerr << "Error: Invalid or unopened file pointer!" << endl;
-//         return "";
-//     }
-
-//     // Read the size byte (first byte)
-//     uint8_t sizeByte;
-//     filePtr->read(reinterpret_cast<char*>(&sizeByte), sizeof(uint8_t));
-//     if (filePtr->eof()) {
-//         cerr << "Error: File is empty or invalid!" << endl;
-//         return "";
-//     }
-
-//     // Determine the number of characters
-//     size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
-
-//     // Read the remaining bytes (numCharacters bytes)
-//     vector<uint8_t> bytes(numCharacters);
-//     filePtr->read(reinterpret_cast<char*>(bytes.data()), numCharacters);
-
-//     // Check if the number of bytes read matches the expected number
-//     if (filePtr->gcount() != static_cast<streamsize>(numCharacters)) {
-//         cerr << "Error: File does not contain the expected number of bytes!" << endl;
-//         return "";
-//     }
-
-//     // Decode the bytes into a string
-//     string result;
-//     for (size_t i = 0; i < bytes.size(); ++i) {
-//         uint8_t byte = bytes[i];
-//         if (i == bytes.size() - 1) {
-//             // Last byte: Right shift and ensure the least significant bit is 0
-//             // byte = byte >> 1; // Drop the LSB
-//         } else {
-//             // Other bytes: Right shift and ensure the least significant bit was 1
-//             if ((byte & 0x01) != 1) {
-//                 cerr << "Error: Invalid byte format!" << endl;
-//                 return "";
-//             }
-//             // byte = byte >> 1; // Drop the LSB
-//         }
-//         byte = byte >> 1; // Drop the LSB
-//         result += static_cast<char>(byte); // Append to the string
-//     }
-
-//     return result;
-// }
 
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes) {
     // Ensure the vector has at least one byte (the size byte)
@@ -860,35 +788,6 @@ string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes) {
 
     return result;
 }
-
-
-
-vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR_PIC(string input) {
-    vector<uint8_t> result;
-    uint8_t numChars = static_cast<uint8_t>(input.length() * 2); // input.length() * 2 => each ASCII character is represented using two bytes
-    
-    // Encode the first byte: MSB = 1, LSB = 1, middle 6 bits = numChars
-    uint8_t firstByte = (0b10000001) | (numChars << 1);
-    result.push_back(firstByte);
-    
-    // Process each ASCII character into two bytes (high byte and low byte)
-    for (size_t i = 0; i < input.length(); ++i) {
-        uint8_t asciiVal = static_cast<uint8_t>(input[i]);
-        uint8_t highByte = ((asciiVal >> 6) & 0x03) << 1 | 1; // Extract top 2 bits, LSB = 1
-        uint8_t lowByte = ((asciiVal & 0x3F) << 1);           // Extract bottom 6 bits
-        
-        // Set LSB of lowByte to 1 if not the last character, else set to 0
-        if (i < input.length() - 1) {
-            lowByte |= 1;
-        }
-        
-        result.push_back(highByte);
-        result.push_back(lowByte);
-    }
-    
-    return result;
-}
-
 
 /*
 'SPECIAL_CODE_GENERATOR' function:
@@ -1105,9 +1004,300 @@ uint32_t countLinesInFile(const string &filePath) {
     }
 
     // Count newline characters using std::count and istreambuf_iterator
-    size_t lineCount = std::count(istreambuf_iterator<char>(file),
+    size_t lineCount = count(istreambuf_iterator<char>(file),
                              istreambuf_iterator<char>(), '\n');
 
     file.close();
     return lineCount;
+}
+
+
+// **********************************
+// Multi Threading Functions
+// **********************************
+
+
+// **** Text to codeWord File ****
+
+// Placeholder function for encoding text to binary
+void encodeTextToBinary(const string& inputFile, const string& outputFile) {
+    // TODO: Implement encoding logic here
+}
+
+// Function to process a portion of the text file
+void processTextChunk(const string& inputFile, streampos start, streampos end, const string& outputFile){
+    lock_guard<mutex> lock(fileMutex);
+    
+    // Open a new input stream for this thread
+    ifstream inFile(inputFile);
+    if (!inFile) {
+        cerr << "Error opening input file: " << inputFile << endl;
+        return;
+    }
+
+    ofstream outFile(outputFile);
+    if (!outFile) {
+        cerr << "Error opening output file: " << outputFile << endl;
+        return;
+    }
+    
+    string line;
+    while (inFile.tellg() < end && getline(inFile, line)) {
+        outFile << line << "\n";
+    }
+    outFile.close();
+    
+    encodeTextToBinary(outputFile, outputFile + ".bin");
+}
+
+// Function to merge binary files in order
+void mergeBinaryFiles(const vector<string>& tempFiles, const string& outputFile) {
+    lock_guard<mutex> lock(fileMutex);
+    ofstream outFile(outputFile, ios::binary);
+    if (!outFile) {
+        cerr << "Error creating merged output file: " << outputFile << endl;
+        return;
+    }
+
+    for (const auto& tempFile : tempFiles) {
+        ifstream inFile(tempFile, ios::binary);
+        if (!inFile) {
+            cerr << "Error opening temp file: " << tempFile << endl;
+            continue;
+        }
+
+        outFile << inFile.rdbuf(); // Append to final output
+        inFile.close();
+        //std::remove(tempFile.c_str()); // Delete temporary file
+    }
+    outFile.close();
+    cout << "Binary files merged into " << outputFile << endl;
+    
+    
+    // ofstream outFile(outputFile, ios::binary);
+    // if (!outFile) {
+    //     cerr << "Error creating merged output file: " << outputFile << endl;
+    //     return;
+    // }
+
+    // for (const auto& tempFile : tempFiles) {
+    //     ifstream inFile(tempFile, ios::binary);
+    //     if (!inFile) {
+    //         cerr << "Error opening temp file: " << tempFile << endl;
+    //         continue;
+    //     }
+
+    //     outFile << inFile.rdbuf(); // Append to final output
+    //     inFile.close();
+    //     std::remove(tempFile.c_str()); // Delete temporary file
+    // }
+    // outFile.close();
+    // cout << "Binary files merged into " << outputFile << endl;
+}
+
+// Function to split a text file into contiguous chunks and process them
+void splitAndProcessTextFile(const string& inputFile, const string& outputFile, int numThreads) {
+    
+    ifstream inFile(inputFile);
+    if (!inFile) {
+        cerr << "Error opening input file: " << inputFile << endl;
+        return;
+    }
+
+    inFile.seekg(0, ios::end);
+    streampos fileSize = inFile.tellg();
+    streampos chunkSize = fileSize / numThreads;
+
+    vector<thread> threads;
+    vector<string> tempFiles;
+
+    for (int i = 0; i < numThreads; i++) {
+        streampos start = i * chunkSize;
+        streampos end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize);
+
+        // Adjust end position to the nearest newline
+        if (i != numThreads - 1) {
+            ifstream tempFile(inputFile);
+            tempFile.seekg(end);
+            string temp;
+            getline(tempFile, temp); // Move past partial line
+            end = tempFile.tellg();
+            tempFile.close();
+        }
+
+        string chunkFile = "chunk_" + to_string(i) + ".bin";
+        tempFiles.push_back(chunkFile);
+        threads.emplace_back(Compression_Function, inputFile, start, end, chunkFile);
+    }
+
+    for (auto& t : threads) {
+        t.join();
+    }
+
+    mergeBinaryFiles(tempFiles, outputFile);
+    cout << "Encoding completed and merged into " << outputFile << endl;
+    
+    
+    
+    
+    // ifstream inFile(inputFile);
+    // if (!inFile) {
+    //     cerr << "Error opening input file: " << inputFile << endl;
+    //     return;
+    // }
+
+    // cout << "Number of threads in Split function = " << numThreads << endl;
+
+    // inFile.seekg(0, ios::end);
+    // streampos fileSize = inFile.tellg();
+    // streampos chunkSize = fileSize / numThreads;
+
+    // vector<thread> threads;
+    // vector<string> tempFiles;
+
+    // //streampos start = 0;
+    // for (int i = 0; i < numThreads; i++) {
+    //     streampos start = i * chunkSize;
+    //     streampos end = (i == numThreads - 1) ? fileSize : (start) + chunkSize;
+        
+    //     // // Adjust end position to newline boundary
+    //     // if (i != numThreads - 1) {
+    //     //     inFile.seekg(end);
+    //     //     string temp;
+    //     //     getline(inFile, temp); // Move past partial line
+    //     //     end = inFile.tellg();
+    //     // }
+        
+    //     // Adjust end position to newline boundary
+    //     if (i != numThreads - 1) {
+    //         ifstream tempFile(inputFile);
+    //         tempFile.seekg(end);
+    //         string temp;
+    //         getline(tempFile, temp); // Move past partial line
+    //         end = tempFile.tellg();
+    //         tempFile.close();
+    //     }
+
+
+    //     string chunkFile = "chunk_" + to_string(i) + ".bin";
+    //     tempFiles.push_back(chunkFile);
+    //     threads.emplace_back(Compression_Function, inputFile, start, end, chunkFile);
+    //     //start = end;
+    // }
+
+    // for (auto& t : threads) {
+    //     t.join();
+    // }
+
+    // mergeBinaryFiles(tempFiles, outputFile);
+    // cout << "Encoding completed and merged into " << outputFile << endl;
+}
+
+// int main(int argc, char* argv[]) {
+//     if (argc != 3) {
+//         cerr << "Usage: " << argv[0] << " <input_text_file> -t <num_threads>" << endl;
+//         return 1;
+//     }
+
+//     string inputFile = argv[1];
+//     int numThreads = 0;
+
+//     try {
+//         numThreads = stoi(argv[2]);
+//         if (numThreads <= 0) throw invalid_argument("Number of threads must be positive");
+//     } catch (const invalid_argument& e) {
+//         cerr << "Invalid thread count: " << argv[2] << endl;
+//         return 1;
+//     }
+
+//     splitAndProcessTextFile(inputFile, numThreads);
+//     return 0;
+// }
+
+
+// **** codeWord to Text File ****
+
+// Function to encode binary data into a text representation (Example function)
+string encodeBinaryToText(const vector<uint8_t>& data) {
+    string encoded;
+    for (uint8_t byte : data) {
+        encoded += to_string(byte) + " "; // Simple encoding (convert byte to number string)
+    }
+    return encoded;
+}
+
+// Function to find the next newline or binary boundary for balanced splitting
+size_t findNextBoundary(ifstream& file, size_t start, size_t maxOffset, char boundaryChar) {
+    file.seekg(start);
+    for (size_t i = 0; i < maxOffset; ++i) {
+        char c;
+        file.get(c);
+        if (c == boundaryChar) {
+            return start + i + 1;
+        }
+    }
+    return start + maxOffset;
+}
+
+// Thread function to read and process a binary file chunk
+void processChunk(const string& binaryFile, size_t start, size_t end, size_t threadId) {
+    ifstream inFile(binaryFile, ios::binary);
+    if (!inFile) {
+        cerr << "Error opening binary file!\n";
+        return;
+    }
+    
+    inFile.seekg(start, ios::beg);
+    size_t chunkSize = end - start;
+    vector<uint8_t> buffer(chunkSize);
+    inFile.read(reinterpret_cast<char*>(buffer.data()), chunkSize);
+    
+    string encodedData = encodeBinaryToText(buffer);
+    
+    string tempFilename = "temp_output_" + to_string(threadId) + ".txt";
+    ofstream outFile(tempFilename);
+    outFile << encodedData;
+    outFile.close();
+}
+
+// Main function to divide work among threads and merge output
+void processBinaryFile(const string& binaryFile, const string& outputTextFile, size_t numThreads) {
+    ifstream inFile(binaryFile, ios::binary | ios::ate);
+    if (!inFile) {
+        cerr << "Error opening binary file!\n";
+        return;
+    }
+    
+    size_t fileSize = inFile.tellg();
+    inFile.seekg(0);
+    
+    vector<size_t> chunkStarts(numThreads + 1, 0);
+    size_t approxChunkSize = fileSize / numThreads;
+    
+    // Determine balanced chunk start positions
+    for (size_t i = 1; i <= numThreads; ++i) {
+        chunkStarts[i] = findNextBoundary(inFile, i * approxChunkSize, approxChunkSize, '\x02');
+    }
+    
+    inFile.close();
+    
+    vector<thread> threads;
+    for (size_t i = 0; i < numThreads; ++i) {
+        threads.emplace_back(processChunk, binaryFile, chunkStarts[i], chunkStarts[i + 1], i);
+    }
+    
+    for (auto& t : threads) {
+        t.join();
+    }
+    
+    // Concatenating output text files in order
+    ofstream outFile(outputTextFile);
+    for (size_t i = 0; i < numThreads; ++i) {
+        string tempFilename = "temp_output_" + to_string(i) + ".txt";
+        ifstream tempFile(tempFilename);
+        outFile << tempFile.rdbuf();
+        tempFile.close();
+        //fs::remove(tempFilename); // Delete temporary file - this require linking to extra libraries
+        std::remove(tempFilename.c_str()); // Delete temporary file
+    }
 }

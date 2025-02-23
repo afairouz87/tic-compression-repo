@@ -7,7 +7,8 @@
         "string": "cpp",
         "iosfwd": "cpp",
         "__locale": "cpp",
-        "ios": "cpp"
+        "ios": "cpp",
+        "istream": "cpp"
     },
 
     "editor.fontSize": 12,
