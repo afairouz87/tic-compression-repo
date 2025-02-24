@@ -50,9 +50,6 @@ Byte-n: last ASCII byte code
 
 ** We can add a reserved codeWord for indicating that the next word is a special codeWord.
 
-
-Test Mac Pro
-
 */
 
 
@@ -118,7 +115,7 @@ int main(int argc, char * argv[]) {
     // cout << "Two byte mid = " << TWO_BYTE_MID << "bits = " << bitset<14> (TWO_BYTE_MID) << endl;
     // ****************
 
-    // Compression
+    // *** Compression ***
     // Building the dictionary hash table for compression
     cout << "Building the dictionary hash table for compression.." << endl;
     if(Build_Dictionary_Table_Compression()==0)
@@ -126,41 +123,30 @@ int main(int argc, char * argv[]) {
     else
         cout << "Error in building the dictionary hash table!" << endl;
 
-
-
     // Send the text file to multiple compression threads
-    splitAndProcessTextFile(inputFileText, outputFileBin, numThreads);
-
-
-    // if(Compression_Function()==0)
-    //     cout << "The compression function is successful." << endl;
-    // else
-    //     cout << "Error in running the compression function!" << endl;
+    if(splitAndProcessTextFile(inputFileText, outputFileBin, numThreads) == 0)
+        cout << "The compression function is successful." << endl;
+    else
+        cout << "Error in running the compression function!" << endl;
 
     // For testing ...
     //printBinaryFile(outputFileNameBin);
 
-    // cout << "Sleep for one second..\n";
+    cout << "Sleep for one second..\n";
+    this_thread::sleep_for(chrono::seconds(1));
 
+    // *** Decompression ***
+    // Building the dictionary hash table for decompression
+    cout << "Building the dictionary hash table for decompression.." << endl;
+    if(Build_Dictionary_Table_Decompression()==0)
+        cout << "The dictionary hash table for decompression has been built successfully." << endl;
+    else
+        cout << "Error in building the dictionary hash table!" << endl;
 
-
-
-    // this_thread::sleep_for(chrono::seconds(1));
-
-
-
-    // // Decompression
-    // // Building the dictionary hash table for decompression
-    // cout << "Building the dictionary hash table for decompression.." << endl;
-    // if(Build_Dictionary_Table_Decompression()==0)
-    //     cout << "The dictionary hash table for decompression has been built successfully." << endl;
-    // else
-    //     cout << "Error in building the dictionary hash table!" << endl;
-
-    // if(Decompression_Function()==0)
-    //     cout << "The decompression function is successful." << endl;
-    // else
-    //     cout << "Error in running the decompression function!" << endl;
+    if(splitAndProcessBinaryFile(outputFileBin, outputFileNameText, numThreads)==0)
+        cout << "The decompression function is successful." << endl;
+    else
+        cout << "Error in running the decompression function!" << endl;
 
 
     delete[] dictMapCodeArray;
@@ -558,7 +544,10 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
     return lineCodeWords;
 }
 
-uint8_t Decompression_Function(){
+//uint8_t Compression_Function(const string& inputFileText, streampos start, streampos end, const string& outputFileBin){
+//void processBinaryChunk(const string& inputFile, streampos start, streampos end, const string& outputFile)
+//uint8_t Decompression_Function(){
+uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameText){
     vector<uint8_t> byteCodes;
     uint32_t tmpSerial = 0, finalSerial = 0;
     string word;
@@ -566,10 +555,25 @@ uint8_t Decompression_Function(){
     // Open the file in binary mode
     ifstream inFile(inputFileNameBin, ios::binary);
     if (!inFile) {
-        cerr << "Error: Could not open file " << outputFileNameBin << " for reading." << endl;
+        cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
         return -1;
     }
     
+    // Set the file pointer to the start of this thread's chunk
+    inFile.seekg(start); // Move file pointer to start position
+
+    // Commented tmp  - Abbas
+    // // Adjust the start position to the nearest newline (0x02) or space (0x00) boundary
+    // if (start > 0) { // Not the first chunk
+    //     char c;
+    //     while (inFile.get(c)) {
+    //         if (c == 0x02 || c == 0x00) break; // Stop at the newline byte code or Space byte code
+    //     }
+    // }
+
+    // Lock before writing to the output file
+    lock_guard<mutex> lock(fileMutex);
+
     ofstream outFile(outputFileNameText, ios::app); // Open in append mode
     if (!outFile) {
         cerr << "Error: Could not open file " << outputFileNameText << " for appending." << endl;
@@ -586,8 +590,10 @@ uint8_t Decompression_Function(){
     cout << "Reading file byte by byte:" << endl;
 
     // Read the file byte by byte
-    //while (inFile.read(reinterpret_cast<char*>(&byte), sizeof(byte))) {
-    while (inFile.read(&byte, 1)) {
+    //while (inFile.read(&byte, 1)) {
+    while (inFile.peek() != EOF && inFile.tellg() < end) { // peek() -> checks the next character without advancing the file pointer.
+        inFile.get(byte); // reads the next byte 
+
         tmpSerial = static_cast<uint8_t>(byte);
         
         /* 
@@ -667,6 +673,8 @@ uint8_t Decompression_Function(){
         }
         
         byteIndex++;
+
+        if (inFile.tellg() >= end) break; // break after its own part of the binary file 
     }
 
     if (inFile.eof()) {
@@ -1017,7 +1025,7 @@ uint32_t countLinesInFile(const string &filePath) {
 // **********************************
 
 
-// **** Text to codeWord File ****
+// **** Text to codeWord (Binary) File ****
 
 // Placeholder function for encoding text to binary
 void encodeTextToBinary(const string& inputFile, const string& outputFile) {
@@ -1068,40 +1076,20 @@ void mergeBinaryFiles(const vector<string>& tempFiles, const string& outputFile)
 
         outFile << inFile.rdbuf(); // Append to final output
         inFile.close();
-        //std::remove(tempFile.c_str()); // Delete temporary file
+        std::remove(tempFile.c_str()); // Delete and remove temporary file
     }
     outFile.close();
     cout << "Binary files merged into " << outputFile << endl;
     
-    
-    // ofstream outFile(outputFile, ios::binary);
-    // if (!outFile) {
-    //     cerr << "Error creating merged output file: " << outputFile << endl;
-    //     return;
-    // }
-
-    // for (const auto& tempFile : tempFiles) {
-    //     ifstream inFile(tempFile, ios::binary);
-    //     if (!inFile) {
-    //         cerr << "Error opening temp file: " << tempFile << endl;
-    //         continue;
-    //     }
-
-    //     outFile << inFile.rdbuf(); // Append to final output
-    //     inFile.close();
-    //     std::remove(tempFile.c_str()); // Delete temporary file
-    // }
-    // outFile.close();
-    // cout << "Binary files merged into " << outputFile << endl;
 }
 
 // Function to split a text file into contiguous chunks and process them
-void splitAndProcessTextFile(const string& inputFile, const string& outputFile, int numThreads) {
+uint8_t splitAndProcessTextFile(const string& inputFile, const string& outputFile, int numThreads) {
     
     ifstream inFile(inputFile);
     if (!inFile) {
         cerr << "Error opening input file: " << inputFile << endl;
-        return;
+        return -1;
     }
 
     inFile.seekg(0, ios::end);
@@ -1137,167 +1125,131 @@ void splitAndProcessTextFile(const string& inputFile, const string& outputFile, 
     mergeBinaryFiles(tempFiles, outputFile);
     cout << "Encoding completed and merged into " << outputFile << endl;
     
+    return 0;
     
-    
-    
-    // ifstream inFile(inputFile);
-    // if (!inFile) {
-    //     cerr << "Error opening input file: " << inputFile << endl;
-    //     return;
-    // }
+}
 
-    // cout << "Number of threads in Split function = " << numThreads << endl;
 
-    // inFile.seekg(0, ios::end);
-    // streampos fileSize = inFile.tellg();
-    // streampos chunkSize = fileSize / numThreads;
+// **** codeWord (Binary) to Text File ****
 
-    // vector<thread> threads;
-    // vector<string> tempFiles;
+// Placeholder function for decoding binary to text
+void decodeBinaryToText(const string& inputFile, const string& outputFile) {
+    // TODO: Implement decoding logic here
+}
 
-    // //streampos start = 0;
-    // for (int i = 0; i < numThreads; i++) {
-    //     streampos start = i * chunkSize;
-    //     streampos end = (i == numThreads - 1) ? fileSize : (start) + chunkSize;
-        
-    //     // // Adjust end position to newline boundary
-    //     // if (i != numThreads - 1) {
-    //     //     inFile.seekg(end);
-    //     //     string temp;
-    //     //     getline(inFile, temp); // Move past partial line
-    //     //     end = inFile.tellg();
-    //     // }
-        
-    //     // Adjust end position to newline boundary
-    //     if (i != numThreads - 1) {
-    //         ifstream tempFile(inputFile);
-    //         tempFile.seekg(end);
-    //         string temp;
-    //         getline(tempFile, temp); // Move past partial line
-    //         end = tempFile.tellg();
-    //         tempFile.close();
+// Function to process a portion of the binary file
+void processBinaryChunk(const string& inputFile, streampos start, streampos end, const string& outputFile) {
+    // Open a new input stream for this thread
+    ifstream inFile(inputFile, ios::binary);
+    if (!inFile) {
+        cerr << "Error opening input file: " << inputFile << endl;
+        return;
+    }
+
+    // Set the file pointer to the start of this thread's chunk
+    inFile.seekg(start); // Move file pointer to start position
+
+    // ** Commented tmm - Abbas 
+    // // Adjust the start position to the nearest newline (0x02) or space (0x00) boundary
+    // if (start > 0) { // Not the first chunk
+    //     char c;
+    //     while (inFile.get(c)) {
+    //         if (c == 0x02 || c == 0x00) break; // Stop at the newline byte code or Space byte code
     //     }
-
-
-    //     string chunkFile = "chunk_" + to_string(i) + ".bin";
-    //     tempFiles.push_back(chunkFile);
-    //     threads.emplace_back(Compression_Function, inputFile, start, end, chunkFile);
-    //     //start = end;
     // }
 
-    // for (auto& t : threads) {
-    //     t.join();
-    // }
-
-    // mergeBinaryFiles(tempFiles, outputFile);
-    // cout << "Encoding completed and merged into " << outputFile << endl;
-}
-
-// int main(int argc, char* argv[]) {
-//     if (argc != 3) {
-//         cerr << "Usage: " << argv[0] << " <input_text_file> -t <num_threads>" << endl;
-//         return 1;
-//     }
-
-//     string inputFile = argv[1];
-//     int numThreads = 0;
-
-//     try {
-//         numThreads = stoi(argv[2]);
-//         if (numThreads <= 0) throw invalid_argument("Number of threads must be positive");
-//     } catch (const invalid_argument& e) {
-//         cerr << "Invalid thread count: " << argv[2] << endl;
-//         return 1;
-//     }
-
-//     splitAndProcessTextFile(inputFile, numThreads);
-//     return 0;
-// }
-
-
-// **** codeWord to Text File ****
-
-// Function to encode binary data into a text representation (Example function)
-string encodeBinaryToText(const vector<uint8_t>& data) {
-    string encoded;
-    for (uint8_t byte : data) {
-        encoded += to_string(byte) + " "; // Simple encoding (convert byte to number string)
-    }
-    return encoded;
-}
-
-// Function to find the next newline or binary boundary for balanced splitting
-size_t findNextBoundary(ifstream& file, size_t start, size_t maxOffset, char boundaryChar) {
-    file.seekg(start);
-    for (size_t i = 0; i < maxOffset; ++i) {
-        char c;
-        file.get(c);
-        if (c == boundaryChar) {
-            return start + i + 1;
-        }
-    }
-    return start + maxOffset;
-}
-
-// Thread function to read and process a binary file chunk
-void processChunk(const string& binaryFile, size_t start, size_t end, size_t threadId) {
-    ifstream inFile(binaryFile, ios::binary);
-    if (!inFile) {
-        cerr << "Error opening binary file!\n";
+    // Lock before writing to the output file
+    lock_guard<mutex> lock(fileMutex);
+    // Create output file for this chunk
+    ofstream outFile(outputFile);
+    if (!outFile) {
+        cerr << "Error opening output file: " << outputFile << endl;
         return;
     }
-    
-    inFile.seekg(start, ios::beg);
-    size_t chunkSize = end - start;
-    vector<uint8_t> buffer(chunkSize);
-    inFile.read(reinterpret_cast<char*>(buffer.data()), chunkSize);
-    
-    string encodedData = encodeBinaryToText(buffer);
-    
-    string tempFilename = "temp_output_" + to_string(threadId) + ".txt";
-    ofstream outFile(tempFilename);
-    outFile << encodedData;
+
+    char byte;
+    //while (inFile.tellg() < end && inFile.get(byte)) { // tmp Abbas
+    while (inFile.tellg() <= end && inFile.get(byte)) {
+        outFile << byte;
+    }
     outFile.close();
+
+    // Call the decoding function
+    decodeBinaryToText(outputFile, outputFile + ".txt");
 }
 
-// Main function to divide work among threads and merge output
-void processBinaryFile(const string& binaryFile, const string& outputTextFile, size_t numThreads) {
-    ifstream inFile(binaryFile, ios::binary | ios::ate);
-    if (!inFile) {
-        cerr << "Error opening binary file!\n";
+// Function to merge text files in order
+void mergeTextFiles(const vector<string>& tempFiles, const string& outputFile) {
+    lock_guard<mutex> lock(fileMutex); // Lock before merging files
+    ofstream outFile(outputFile);
+    if (!outFile) {
+        cerr << "Error creating merged output file: " << outputFile << endl;
         return;
     }
-    
-    size_t fileSize = inFile.tellg();
-    inFile.seekg(0);
-    
-    vector<size_t> chunkStarts(numThreads + 1, 0);
-    size_t approxChunkSize = fileSize / numThreads;
-    
-    // Determine balanced chunk start positions
-    for (size_t i = 1; i <= numThreads; ++i) {
-        chunkStarts[i] = findNextBoundary(inFile, i * approxChunkSize, approxChunkSize, '\x02');
+
+    for (const auto& tempFile : tempFiles) {
+        ifstream inFile(tempFile);
+        if (!inFile) {
+            cerr << "Error opening temp file: " << tempFile << endl;
+            continue;
+        }
+
+        outFile << inFile.rdbuf(); // Append to final output
+        inFile.close();
+        std::remove(tempFile.c_str()); // Delete and remove temporary file
     }
-    
-    inFile.close();
-    
+    outFile.close();
+    cout << "Text files merged into " << outputFile << endl;
+}
+
+// Function to split a binary file into chunks and process them
+uint8_t splitAndProcessBinaryFile(const string& inputFile, const string& outputFile, int numThreads) {
+    ifstream inFile(inputFile, ios::binary);
+    if (!inFile) {
+        cerr << "Error opening input file: " << inputFile << endl;
+        return -1;
+    }
+
+    inFile.seekg(0, ios::end);
+    streampos fileSize = inFile.tellg();
+    streampos chunkSize = fileSize / numThreads;
+
     vector<thread> threads;
-    for (size_t i = 0; i < numThreads; ++i) {
-        threads.emplace_back(processChunk, binaryFile, chunkStarts[i], chunkStarts[i + 1], i);
+    vector<string> tempFiles;
+    streampos start, end;
+
+    for (int i = 0; i < numThreads; i++) {
+        if (i==0)
+            start = 0;
+        else
+            start = end;
+        
+        //end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize); // tmp - Abbas
+        end = (i == numThreads - 1) ? fileSize : streampos(i  * chunkSize);
+
+        // Adjust end position to the nearest newline (0x02) boundary
+        if (i != numThreads - 1) {
+            ifstream tempFile(inputFile, ios::binary);
+            tempFile.seekg(end);
+            char c;
+            while (tempFile.get(c)) {
+                if (c == 0x02 || c == 0x00) break; // Stop at newline or space
+            }
+            end = tempFile.tellg();
+            tempFile.close();
+        }
+
+        string chunkFile = "chunk_" + to_string(i) + ".txt";
+        tempFiles.push_back(chunkFile);
+        threads.emplace_back(Decompression_Function, inputFile, start, end, chunkFile);
     }
-    
+
     for (auto& t : threads) {
         t.join();
     }
-    
-    // Concatenating output text files in order
-    ofstream outFile(outputTextFile);
-    for (size_t i = 0; i < numThreads; ++i) {
-        string tempFilename = "temp_output_" + to_string(i) + ".txt";
-        ifstream tempFile(tempFilename);
-        outFile << tempFile.rdbuf();
-        tempFile.close();
-        //fs::remove(tempFilename); // Delete temporary file - this require linking to extra libraries
-        std::remove(tempFilename.c_str()); // Delete temporary file
-    }
+
+    mergeTextFiles(tempFiles, outputFile);
+    cout << "Decoding completed and merged into " << outputFile << endl;
+
+    return 0;
 }

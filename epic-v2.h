@@ -66,7 +66,7 @@ uint32_t Shift_Left_with_Zero_Inserted(uint32_t number);
 uint32_t Shift_Right_Seven_Positions(uint32_t number);
 
 uint8_t Compression_Function(const string& inputFile, streampos start, streampos end, const string& outputFile);
-uint8_t Decompression_Function();
+uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameText);
 
 // Reading a plain text file functions
 uint8_t processFile(const string &filePath);
@@ -84,15 +84,17 @@ void printBinaryFile(const string &filePath);
 
 //*** Multi Threading Functions ****
 
+// ** Compression **
 void encodeTextToBinary(const string& inputFile, const string& outputFile);
 void processTextChunk(const string& inputFile, streampos start, streampos end, const string& outputFile);
 void mergeBinaryFiles(const vector<string>& tempFiles, const string& outputFile);
-void splitAndProcessTextFile(const string& inputFile, const string& outputFile, int numThreads);
+uint8_t splitAndProcessTextFile(const string& inputFile, const string& outputFile, int numThreads);
 
-string encodeBinaryToText(const vector<uint8_t>& data);
-size_t findNextBoundary(ifstream& file, size_t start, size_t maxOffset, char boundaryChar);
-void processChunk(const string& binaryFile, size_t start, size_t end, size_t threadId);
-void processBinaryFile(const string& binaryFile, const string& outputTextFile, size_t numThreads);
+// ** Decompression **
+void decodeBinaryToText(const string& inputFile, const string& outputFile);
+void processBinaryChunk(const string& inputFile, streampos start, streampos end, const string& outputFile);
+void mergeTextFiles(const vector<string>& tempFiles, const string& outputFile);
+uint8_t splitAndProcessBinaryFile(const string& inputFile, const string& outputFile, int numThreads);
 
 //********************************** 
 
