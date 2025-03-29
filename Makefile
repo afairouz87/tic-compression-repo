@@ -3,9 +3,9 @@ CXX = g++
 # Compiler flags
 CXXFLAGS = -std=c++11
 # Target executables
-TARGETS = pic-v1 epic-v1 epic-v2
+TARGETS = pic-v1 epic-v1 epic-v2 epic-v3
 # Source files
-SOURCES = pic-v1.cpp epic-v1.cpp epic-v2.cpp
+SOURCES = pic-v1.cpp epic-v1.cpp epic-v2.cpp epic-v3.cpp
 
 # Default target builds all executables
 all: $(TARGETS)
@@ -19,6 +19,9 @@ epic: epic-v1.cpp
 
 epic2: epic-v2.cpp
 	$(CXX) $(CXXFLAGS) epic-v2.cpp -o epic-v2
+
+epic3: epic-v3.cpp
+	$(CXX) $(CXXFLAGS) epic-v3.cpp -o epic-v3
 
 # Clean target to remove all executables
 clean:
