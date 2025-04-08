@@ -2,10 +2,10 @@
 
 Title: Enhanced PIC (EPIC) compression
 Author: Abbas A. Fairouz
-Version: 3.0
+Version: 3.1
 Note: multi-threaded version
-Created: Mar. 29, 2025
-Updated: Mar. 29, 2025
+Created: Apr. 8, 2025
+Updated: Apr. 9, 2025
 
 Description:
 * In this version, 
@@ -20,7 +20,7 @@ https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 
 */
 
-#include "epic-v3.h"
+#include "epic-v3.1.h"
 
 
 /*
@@ -63,7 +63,7 @@ Byte-n: last ASCII byte code
 
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
-//unordered_map<uint32_t, string> dictMapCode; // Decompression Hash Table
+//unordered_map<uint32_t, string> dictMapCode; // Decompression Hash Table (UNUSED)
 string *dictMapCodeArray = nullptr; // Decompression Consecutive Array of rank of codeWords
 
 // File path of the CSV file
