@@ -92,20 +92,24 @@ mutex fileMutex;
 int main(int argc, char * argv[]) {
 //int main() {
 
-    if (argc != 5 || string(argv[2]) != "-t") {
-        cerr << "Usage: " << argv[0] << " <input_text_file> -t <num_threads> <output_binary_file>" << endl;
+    if (argc != 6 || 
+        !(string(argv[2]) == "-c" || string(argv[2]) == "-d" || string(argv[2]) == "-l" || string(argv[2]) == "-r") || 
+        string(argv[3]) != "-t")    
+    {
+        cerr << "Usage: " << argv[0] << " <input_file> -[c,d,l,r] -t <num_threads> <output_file>" << endl;
         return 1;
     }
 
-    string inputFileText = argv[1];
-    string outputFileBin = argv[4];
+    string inputFileName = argv[1];
+    string operationMode = argv[2];
+    string outputFileName = argv[5];
     int numThreads = 0;
 
     try {
-        numThreads = stoi(argv[3]);
+        numThreads = stoi(argv[4]);
         if (numThreads <= 0) throw invalid_argument("Number of threads must be positive");
     } catch (const invalid_argument& e) {
-        cerr << "Invalid thread count: " << argv[3] << endl;
+        cerr << "Invalid thread count: " << argv[4] << endl;
         return 1;
     }
 
@@ -123,39 +127,53 @@ int main(int argc, char * argv[]) {
     // cout << "Two byte mid = " << TWO_BYTE_MID << "bits = " << bitset<14> (TWO_BYTE_MID) << endl;
     // ****************
 
-    // *** Compression ***
-    // Building the dictionary hash table for compression
-    cout << "Building the dictionary hash table for compression.." << endl;
-    if(Build_Dictionary_Table_Compression()==0)
-        cout << "The dictionary hash table for compression has been built successfully." << endl;
-    else
-        cout << "Error in building the dictionary hash table!" << endl;
+    if(operationMode == "-c"){ // compression operation flag
+        // *** Compression ***
+        // Building the dictionary hash table for compression
+        cout << "Building the dictionary hash table for compression.." << endl;
+        if(Build_Dictionary_Table_Compression()==0)
+            cout << "The dictionary hash table for compression has been built successfully." << endl;
+        else
+            cout << "Error in building the dictionary hash table!" << endl;
 
-    // Send the text file to multiple compression threads
-    if(splitAndProcessTextFile(inputFileText, outputFileBin, numThreads) == 0)
-        cout << "The compression function is successful." << endl;
-    else
-        cout << "Error in running the compression function!" << endl;
+        // Send the text file to multiple compression threads
+        if(splitAndProcessTextFile(inputFileName, outputFileName, numThreads) == 0)
+            cout << "The compression function is successful." << endl;
+        else
+            cout << "Error in running the compression function!" << endl;
+    } // compression operation flag
+    else if(operationMode == "-d"){ // decompression operation flag
+        // *** Decompression ***
+        // Building the dictionary hash table for decompression
+        cout << "Building the dictionary hash table for decompression.." << endl;
+        if(Build_Dictionary_Table_Decompression()==0)
+            cout << "The dictionary hash table for decompression has been built successfully." << endl;
+        else
+            cout << "Error in building the dictionary hash table!" << endl;
 
-    // For testing ...
+        if(splitAndProcessBinaryFile(inputFileName, outputFileName, numThreads)==0)
+            cout << "The decompression function is successful." << endl;
+        else
+            cout << "Error in running the decompression function!" << endl;
+    } // decompression operation flag
+    else if(operationMode == "-l"){ // lookup operation flag
+
+    } // lookup operation flag
+    else if(operationMode == "-r"){ // lookup and replace operation flag
+        
+    } // lookup and replace operation flag
+    else{ // error 
+        cerr << "Invalid operation: " << argv[2] << endl;
+        return 1;
+    }
+
+
+
+     // For testing ...
     //printBinaryFile(outputFileNameBin);
 
-    cout << "Sleep for one second..\n";
-    this_thread::sleep_for(chrono::seconds(1));
-
-    // *** Decompression ***
-    // Building the dictionary hash table for decompression
-    cout << "Building the dictionary hash table for decompression.." << endl;
-    if(Build_Dictionary_Table_Decompression()==0)
-        cout << "The dictionary hash table for decompression has been built successfully." << endl;
-    else
-        cout << "Error in building the dictionary hash table!" << endl;
-
-    if(splitAndProcessBinaryFile(outputFileBin, outputFileNameText, numThreads)==0)
-        cout << "The decompression function is successful." << endl;
-    else
-        cout << "Error in running the decompression function!" << endl;
-
+    // cout << "Sleep for one second..\n";
+    // this_thread::sleep_for(chrono::seconds(1));
 
     delete[] dictMapCodeArray;
     dictMapWord.clear();
