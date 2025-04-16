@@ -5,15 +5,20 @@ Author: Abbas A. Fairouz
 Version: 3.1
 Note: multi-threaded version
 Created: Apr. 8, 2025
-Updated: Apr. 9, 2025
+Updated: Apr. 10, 2025
 
 Description:
-* In this version, 
-we will modify the special codeWord (T_s) to include 8-bit for each ASCII character. 
+* In this version:
+1) we will modify the special codeWord (T_s) to include 8-bit for each ASCII character. 
 The T_s special codeWord starts by an extra two bytes:
-  1. Byte1: reserved code which indicates that the next word in a special codeWord.alignas
-  2. Byte2: represent the number of ASCII characters in the special codeWord.
+    a. Byte1: reserved code which indicates that the next word in a special codeWord.alignas
+    b. Byte2: represent the number of ASCII characters in the special codeWord.
 
+2) we will add passing arguments to choose one of the operations:
+    a. Compression
+    b. Decompression
+    c. Lookup
+    d. Lookup and Replace
 
 Word frequency reference:
 https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
@@ -82,6 +87,7 @@ string outputFileNameText = "output.txt";
 
 // Counters for debugging
 int specialCodeWordCounter = 0;
+int lineNumber = 1;
 
 // 
 mutex fileMutex;
@@ -92,17 +98,21 @@ mutex fileMutex;
 int main(int argc, char * argv[]) {
 //int main() {
 
-    if (argc != 6 || 
+    if (argc != 6 || argc != 7 ||
         !(string(argv[2]) == "-c" || string(argv[2]) == "-d" || string(argv[2]) == "-l" || string(argv[2]) == "-r") || 
         string(argv[3]) != "-t")    
     {
-        cerr << "Usage: " << argv[0] << " <input_file> -[c,d,l,r] -t <num_threads> <output_file>" << endl;
+        cerr << "Usage: " << argv[0] << 
+        " <input_file> -[c,d,l,r] -t <num_threads> <output_file> [<search_string>]\nNote: <search_string> if -l or -r flags used." 
+        << endl;
+
         return 1;
     }
 
     string inputFileName = argv[1];
     string operationMode = argv[2];
     string outputFileName = argv[5];
+    string searchString = argv[6];
     int numThreads = 0;
 
     try {
@@ -157,7 +167,7 @@ int main(int argc, char * argv[]) {
             cout << "Error in running the decompression function!" << endl;
     } // decompression operation flag
     else if(operationMode == "-l"){ // lookup operation flag
-
+        
     } // lookup operation flag
     else if(operationMode == "-r"){ // lookup and replace operation flag
         
@@ -198,6 +208,162 @@ int main(int argc, char * argv[]) {
     OTHER FUNCTIONS 
 --------------------------
 */
+
+
+
+// Abbas Reached here ...
+/*
+To-do and consider:
+- Generate a compressed byteCodes for the searchString
+- Open part of the file (for a each thread in multi-threaded version).
+Then, lookup and match byte-by-byte.
+If there is a match, increment a counter.
+- Return the value of the counter.
+*/
+uint8_t Lookup_Function(const string& inputFileNameBin, streampos start, streampos end, vector<uint8_t> searchString){
+    vector<uint8_t> byteCodes;
+    uint32_t tmpSerial = 0, finalSerial = 0;
+    string word;
+
+    // Open the file in binary mode
+    ifstream inFile(inputFileNameBin, ios::binary);
+    if (!inFile) {
+        cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
+        return -1;
+    }
+    
+    // Set the file pointer to the start of this thread's chunk
+    inFile.seekg(start); // Move file pointer to start position
+
+    // Commented tmp  - Abbas
+    // // Adjust the start position to the nearest newline (0x02) or space (0x00) boundary
+    // if (start > 0) { // Not the first chunk
+    //     char c;
+    //     while (inFile.get(c)) {
+    //         if (c == 0x02 || c == 0x00) break; // Stop at the newline byte code or Space byte code
+    //     }
+    // }
+
+    // Lock before writing to the output file
+    lock_guard<mutex> lock(fileMutex);
+
+    // ofstream outFile(outputFileNameText, ios::app); // Open in append mode
+    // if (!outFile) {
+    //     cerr << "Error: Could not open file " << outputFileNameText << " for appending." << endl;
+    //     return -1;
+    // }
+
+    uint8_t nextByte; // Variable to store each byte
+    size_t byteIndex = 0; // Optional: Index of the byte being read
+    bool NEXT_CAP = false;
+    int serial = 0;
+    uint32_t count = 0;
+
+    char byte;
+    cout << "Reading file byte by byte:" << endl;
+
+    // Read the file byte by byte
+    //while (inFile.read(&byte, 1)) {
+    while (inFile.peek() != EOF && inFile.tellg() < end) { // peek() -> checks the next character without advancing the file pointer.
+        inFile.get(byte); // reads the next byte 
+
+        tmpSerial = static_cast<uint8_t>(byte);
+        
+        /* 
+        ----------
+        To check the LSb of the byte: 
+        '1' --> there is a next byte. 
+        '0' --> last byte in the codeWord sequence
+        ----------
+        */
+        nextByte = tmpSerial % 2; 
+        
+        tmpSerial = tmpSerial >> 1; // ignore the LSb after reading it
+        
+        if(nextByte==0){
+            // Finalize the concatenated serial number
+            finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, tmpSerial, count));
+            
+            /*
+            ----------
+            Note:
+            The variable "count" is used to count the number of ones 
+            realized in the codeWord while reading each byte separately.
+            ----------
+            */
+            if(count == 1) // TWO CODE
+                finalSerial += TWO_BYTE_OFFSET;
+            else if(count == 2) // THREE CODE
+                finalSerial += THREE_BYTE_OFFSET;
+            
+
+            if(finalSerial == SPACE_CODE){ // space
+                outFile << " ";
+            }
+            else if (finalSerial == NEW_LINE_CODE){ // newline
+                //cout << "NEW LINE\n";
+                outFile << "\n";
+            }
+            else if (finalSerial == NEXT_CAPITAL_CODE){ // next uppercase (capital letter) character
+                //cout << "NEXT CAP\n";
+                NEXT_CAP = true;
+            }
+            else if (finalSerial == NEXT_SPECIAL_CODE){ // next special codeWord
+                // next special codeWord bytes ...
+                // To-Do ...
+                word = SPECIAL_CODE_WORD_READER(&inFile);
+                outFile << word;
+            }
+            else{ // check the dictionary hash table
+                
+                // Check the word in the dictionary hash table
+                //word = dictMapCode[finalSerial];
+
+                // Check the word in the dictionary array of words
+                word = dictMapCodeArray[finalSerial];
+                
+                if(NEXT_CAP){
+                    // Change the first letter of the word to uppercase character
+                    word[0] = toupper(word[0]);
+
+                    // reset the NEXT_CAP to false
+                    NEXT_CAP = false;
+                }
+
+                outFile << word;
+            } // end of else 'check the dictionary hash table'
+
+            // reset both finalSerial and tmpSerial
+            tmpSerial = 0;
+            finalSerial = 0;
+            count = 0;
+
+        } // if (nextByte==0)
+        else{ // if (nextByte==1)
+            //finalSerial = (finalSerial << 7) | tmpSerial;
+            finalSerial = concatenateBytes(finalSerial, tmpSerial, count);
+            count++;
+        }
+        
+        byteIndex++;
+
+        if (inFile.tellg() >= end) break; // break after its own part of the binary file 
+    }
+
+    if (inFile.eof()) {
+        cout << "End of file reached." << endl;
+    } else if (inFile.fail()) {
+        cerr << "Error: Failed to read the file." << endl;
+    }
+
+    inFile.close();
+    outFile.close();
+
+    return 0;
+}
+
+
+
 
 // *** Consecutive Array for Decompression ***
 uint8_t Build_Dictionary_Table_Decompression(){
@@ -527,7 +693,6 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
             
             if(serial == 0) { // NOT FOUND in the hash table - SPECIAL codeWord
                 // Call a function to generate a special codeWord
-                // ... To-Do ...
                 byteCodes = SPECIAL_CODE_WORD_GENERATOR(word);
                 lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)); // next special codeWord
 
@@ -571,9 +736,6 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
     return lineCodeWords;
 }
 
-//uint8_t Compression_Function(const string& inputFileText, streampos start, streampos end, const string& outputFileBin){
-//void processBinaryChunk(const string& inputFile, streampos start, streampos end, const string& outputFile)
-//uint8_t Decompression_Function(){
 uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameText){
     vector<uint8_t> byteCodes;
     uint32_t tmpSerial = 0, finalSerial = 0;
@@ -1055,37 +1217,6 @@ uint32_t countLinesInFile(const string &filePath) {
 
 // **** Text to codeWord (Binary) File ****
 
-// Placeholder function for encoding text to binary
-void encodeTextToBinary(const string& inputFile, const string& outputFile) {
-    // TODO: Implement encoding logic here
-}
-
-// Function to process a portion of the text file
-void processTextChunk(const string& inputFile, streampos start, streampos end, const string& outputFile){
-    lock_guard<mutex> lock(fileMutex);
-    
-    // Open a new input stream for this thread
-    ifstream inFile(inputFile);
-    if (!inFile) {
-        cerr << "Error opening input file: " << inputFile << endl;
-        return;
-    }
-
-    ofstream outFile(outputFile);
-    if (!outFile) {
-        cerr << "Error opening output file: " << outputFile << endl;
-        return;
-    }
-    
-    string line;
-    while (inFile.tellg() < end && getline(inFile, line)) {
-        outFile << line << "\n";
-    }
-    outFile.close();
-    
-    encodeTextToBinary(outputFile, outputFile + ".bin");
-}
-
 // Function to merge binary files in order
 void mergeBinaryFiles(const vector<string>& tempFiles, const string& outputFile) {
     lock_guard<mutex> lock(fileMutex);
@@ -1160,51 +1291,6 @@ uint8_t splitAndProcessTextFile(const string& inputFile, const string& outputFil
 
 // **** codeWord (Binary) to Text File ****
 
-// Placeholder function for decoding binary to text
-void decodeBinaryToText(const string& inputFile, const string& outputFile) {
-    // TODO: Implement decoding logic here
-}
-
-// Function to process a portion of the binary file
-void processBinaryChunk(const string& inputFile, streampos start, streampos end, const string& outputFile) {
-    // Open a new input stream for this thread
-    ifstream inFile(inputFile, ios::binary);
-    if (!inFile) {
-        cerr << "Error opening input file: " << inputFile << endl;
-        return;
-    }
-
-    // Set the file pointer to the start of this thread's chunk
-    inFile.seekg(start); // Move file pointer to start position
-
-    // ** Commented tmm - Abbas 
-    // // Adjust the start position to the nearest newline (0x02) or space (0x00) boundary
-    // if (start > 0) { // Not the first chunk
-    //     char c;
-    //     while (inFile.get(c)) {
-    //         if (c == 0x02 || c == 0x00) break; // Stop at the newline byte code or Space byte code
-    //     }
-    // }
-
-    // Lock before writing to the output file
-    lock_guard<mutex> lock(fileMutex);
-    // Create output file for this chunk
-    ofstream outFile(outputFile);
-    if (!outFile) {
-        cerr << "Error opening output file: " << outputFile << endl;
-        return;
-    }
-
-    char byte;
-    //while (inFile.tellg() < end && inFile.get(byte)) { // tmp Abbas
-    while (inFile.tellg() <= end && inFile.get(byte)) {
-        outFile << byte;
-    }
-    outFile.close();
-
-    // Call the decoding function
-    decodeBinaryToText(outputFile, outputFile + ".txt");
-}
 
 // Function to merge text files in order
 void mergeTextFiles(const vector<string>& tempFiles, const string& outputFile) {

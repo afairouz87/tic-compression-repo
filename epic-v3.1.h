@@ -24,17 +24,18 @@ using namespace std;
 using namespace chrono;
 namespace fs = std::filesystem;
 
+// *** Reserved codeWords in T0: space, new line, next capital
 /*
 This is used to shift the codeWord by 
 the reserved codeWords (space, newline, nextCapital).
 */ 
-#define CODE_WORD_OFFSET 4
+#define CODE_WORD_OFFSET 4    // number of reserved code-words
 
-// Reserved codeWords: space, new line, next capital
-#define SPACE_CODE 0x0
-#define NEW_LINE_CODE 0x1
-#define NEXT_CAPITAL_CODE 0x2
-#define NEXT_SPECIAL_CODE 0x3
+#define SPACE_CODE 0x0        // represent a space
+#define NEW_LINE_CODE 0x1     // represent a newline 
+#define NEXT_CAPITAL_CODE 0x2 // represent an uppercase letter of the first character of the next word
+#define NEXT_SPECIAL_CODE 0x3 // represent a special code word in the next bytes of the encoded file
+// *******************************
 
 #define TWO_BYTE_OFFSET 128 // = pow(2,7)
 #define THREE_BYTE_OFFSET 16512 // = ( pow(2,7) + pow(2,14) )
@@ -67,6 +68,8 @@ uint32_t Shift_Right_Seven_Positions(uint32_t number);
 
 uint8_t Compression_Function(const string& inputFile, streampos start, streampos end, const string& outputFile);
 uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameText);
+uint8_t Lookup_Function(const string& inputFileNameBin, streampos start, streampos end, vector<uint8_t> searchString);
+uint8_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameBin);
 
 // Reading a plain text file functions
 uint8_t processFile(const string &filePath);
@@ -85,14 +88,10 @@ void printBinaryFile(const string &filePath);
 //*** Multi Threading Functions ****
 
 // ** Compression **
-void encodeTextToBinary(const string& inputFile, const string& outputFile);
-void processTextChunk(const string& inputFile, streampos start, streampos end, const string& outputFile);
 void mergeBinaryFiles(const vector<string>& tempFiles, const string& outputFile);
 uint8_t splitAndProcessTextFile(const string& inputFile, const string& outputFile, int numThreads);
 
 // ** Decompression **
-void decodeBinaryToText(const string& inputFile, const string& outputFile);
-void processBinaryChunk(const string& inputFile, streampos start, streampos end, const string& outputFile);
 void mergeTextFiles(const vector<string>& tempFiles, const string& outputFile);
 uint8_t splitAndProcessBinaryFile(const string& inputFile, const string& outputFile, int numThreads);
 
