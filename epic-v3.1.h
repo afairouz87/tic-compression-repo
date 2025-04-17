@@ -68,7 +68,7 @@ uint32_t Shift_Right_Seven_Positions(uint32_t number);
 
 uint8_t Compression_Function(const string& inputFile, streampos start, streampos end, const string& outputFile);
 uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameText);
-uint8_t Lookup_Function(const string& inputFileNameBin, streampos start, streampos end, vector<uint8_t> searchString);
+uint8_t Lookup_Function(const string& inputFileNameBin, streampos start, streampos end, string searchString);
 uint8_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameBin);
 
 // Reading a plain text file functions
@@ -77,6 +77,7 @@ vector<string> processLineChar(const string &line); // return a vector of string
 //vector<string> processLineChar(const string &line, ofstream *file); // return a vector of strings
 //vector<uint8_t> processLineChar(const string &line, ofstream *file); // return a vector of strings
 vector<uint8_t> convertStringToCodeWord(vector<string> word);
+vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet);
 
 char checkStringEndsWithPunctuation(const string &str);
 void checkLinesInFile(const string &filePath);
@@ -94,6 +95,9 @@ uint8_t splitAndProcessTextFile(const string& inputFile, const string& outputFil
 // ** Decompression **
 void mergeTextFiles(const vector<string>& tempFiles, const string& outputFile);
 uint8_t splitAndProcessBinaryFile(const string& inputFile, const string& outputFile, int numThreads);
+
+// ** Lookup **
+uint8_t splitAndProcessBinaryFileForSearch(const string& inputFile, const string& outputFile, int numThreads, string searchString);
 
 //********************************** 
 
