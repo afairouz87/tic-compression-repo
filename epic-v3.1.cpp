@@ -9,7 +9,7 @@ Updated: Apr. 10, 2025
 
 Description:
 * In this version:
-1) we will modify the special codeWord (T_s) to include 8-bit for each ASCII character. 
+1) we will modify the special codeWord (T_s) to include 8-bit for each ASCII character.
 The T_s special codeWord starts by an extra two bytes:
     a. Byte1: reserved code which indicates that the next word in a special codeWord.alignas
     b. Byte2: represent the number of ASCII characters in the special codeWord.
@@ -26,7 +26,6 @@ https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 */
 
 #include "epic-v3.1.h"
-
 
 /*
 *** Notes for the byte codes range calculations ***
@@ -65,54 +64,51 @@ Byte-n: last ASCII byte code
 
 */
 
-
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
-//unordered_map<uint32_t, string> dictMapCode; // Decompression Hash Table (UNUSED)
+// unordered_map<uint32_t, string> dictMapCode; // Decompression Hash Table (UNUSED)
 string *dictMapCodeArray = nullptr; // Decompression Consecutive Array of rank of codeWords
 
 // File path of the CSV file
-//string dictFilename = "unigram_freq.csv"; 
-string dictFilename = "dict.txt"; 
+// string dictFilename = "unigram_freq.csv";
+string dictFilename = "dict.txt";
 
 // input plaint text file
-//string inputFileNameText = "input_file.txt"; 
+// string inputFileNameText = "input_file.txt";
 // Compression
-string inputFileNameText = "test1.txt"; 
+string inputFileNameText = "test1.txt";
 string outputFileNameBin = "output.bin";
 
 // Decompression
-string inputFileNameBin = "output.bin"; 
+string inputFileNameBin = "output.bin";
 string outputFileNameText = "output.txt";
 
 // Counters for debugging
 int specialCodeWordCounter = 0;
 int lineNumber = 1;
 
-// 
+//
 mutex fileMutex;
 
 // *********************************************
 //            Main Function
 // *********************************************
-int main(int argc, char * argv[]) {
-//int main() {
+int main(int argc, char *argv[])
+{
+    // int main() {
 
     if (!(argc == 6 || argc == 7 || argc == 8) ||
-        !(string(argv[2]) == "-c" || string(argv[2]) == "-d" || string(argv[2]) == "-l" || string(argv[2]) == "-r") || 
-        string(argv[3]) != "-t")    
+        !(string(argv[2]) == "-c" || string(argv[2]) == "-d" || string(argv[2]) == "-l" || string(argv[2]) == "-r") ||
+        string(argv[3]) != "-t")
     {
-        cerr << 
-        "Flags:\n-c: compression\n-d: decompression\n-l: Lookup (Search)\n-r: Lookup-and-Replace (Search and Replace)\n" <<
-        "Usage: " << 
-        argv[0] << 
-        " <input_file> -[c,d,l,r] -t <num_threads> <output_file> [\"<search_string>\"] [\"<replace_string>\"]\n" <<
-        "Notes:\n" << 
-        "** For -l and -r flags: <search_string> is used.\n" <<
-        "** For -l flag: <output_file> is ignored\n" <<
-        "** For -r flag: <replace_string> is used\n" <<
-        "** For <search_string> and <replace_string>: You need to allocate them between double quotes \"\" \n" <<
-        endl;
+        cerr << "Flags:\n-c: compression\n-d: decompression\n-l: Lookup (Search)\n-r: Lookup-and-Replace (Search and Replace)\n"
+             << "Usage: " << argv[0] << " <input_file> -[c,d,l,r] -t <num_threads> <output_file> [\"<search_string>\"] [\"<replace_string>\"]\n"
+             << "Notes:\n"
+             << "** For -l and -r flags: <search_string> is used.\n"
+             << "** For -l flag: <output_file> is ignored\n"
+             << "** For -r flag: <replace_string> is used\n"
+             << "** For <search_string> and <replace_string>: You need to allocate them between double quotes \"\" \n"
+             << endl;
 
         return 1;
     }
@@ -122,18 +118,22 @@ int main(int argc, char * argv[]) {
     string outputFileName = argv[5];
     string searchString = "", replaceString = "";
 
-    if(argc==7 || argc==8)
+    if (argc == 7 || argc == 8)
         searchString = argv[6];
-    
-    if(argc==8)
+
+    if (argc == 8)
         replaceString = argv[7];
 
     int numThreads = 0;
 
-    try {
+    try
+    {
         numThreads = stoi(argv[4]);
-        if (numThreads <= 0) throw invalid_argument("Number of threads must be positive");
-    } catch (const invalid_argument& e) {
+        if (numThreads <= 0)
+            throw invalid_argument("Number of threads must be positive");
+    }
+    catch (const invalid_argument &e)
+    {
         cerr << "Invalid thread count: " << argv[4] << endl;
         return 1;
     }
@@ -144,7 +144,7 @@ int main(int argc, char * argv[]) {
     uint32_t numberOfWords = countLinesInFile(dictFilename);
     cout << "Number of lines in the dictionary file: " << numberOfWords << endl;
 
-    dictMapCodeArray = new string[numberOfWords+10]; // add an extra spaces
+    dictMapCodeArray = new string[numberOfWords + 10]; // add an extra spaces
 
     // **** TESTs ****
     // int TMP_NUM = ONE_BYTE_BOUND-1;
@@ -152,60 +152,63 @@ int main(int argc, char * argv[]) {
     // cout << "Two byte mid = " << TWO_BYTE_MID << "bits = " << bitset<14> (TWO_BYTE_MID) << endl;
     // ****************
 
-    if(operationMode == "-c"){ // compression operation flag
+    if (operationMode == "-c")
+    { // compression operation flag
         // *** Compression ***
         // Building the dictionary hash table for compression
         cout << "Building the dictionary hash table for compression.." << endl;
-        if(Build_Dictionary_Table_Compression()==0)
+        if (Build_Dictionary_Table_Compression() == 0)
             cout << "The dictionary hash table for compression has been built successfully." << endl;
         else
             cout << "Error in building the dictionary hash table!" << endl;
 
         // Send the text file to multiple compression threads
-        if(splitAndProcessTextFile(inputFileName, outputFileName, numThreads) == 0)
+        if (splitAndProcessTextFile(inputFileName, outputFileName, numThreads) == 0)
             cout << "The compression function is successful." << endl;
         else
             cout << "Error in running the compression function!" << endl;
     } // compression operation flag
-    else if(operationMode == "-d"){ // decompression operation flag
+    else if (operationMode == "-d")
+    { // decompression operation flag
         // *** Decompression ***
         // Building the dictionary hash table for decompression
         cout << "Building the dictionary hash table for decompression.." << endl;
-        if(Build_Dictionary_Table_Decompression()==0)
+        if (Build_Dictionary_Table_Decompression() == 0)
             cout << "The dictionary hash table for decompression has been built successfully." << endl;
         else
             cout << "Error in building the dictionary hash table!" << endl;
 
-        if(splitAndProcessBinaryFile(inputFileName, outputFileName, numThreads)==0)
+        if (splitAndProcessBinaryFile(inputFileName, outputFileName, numThreads) == 0)
             cout << "The decompression function is successful." << endl;
         else
             cout << "Error in running the decompression function!" << endl;
     } // decompression operation flag
-    else if(operationMode == "-l"){ // lookup operation flag  
-        // Building the dictionary hash table for compressing the search string 
+    else if (operationMode == "-l")
+    { // lookup operation flag
+        // Building the dictionary hash table for compressing the search string
         cout << "Building the dictionary hash table for compression.." << endl;
-        if(Build_Dictionary_Table_Compression()==0)
+        if (Build_Dictionary_Table_Compression() == 0)
             cout << "The dictionary hash table for compression has been built successfully." << endl;
         else
             cout << "Error in building the dictionary hash table!" << endl;
 
-        if(splitAndProcessBinaryFileForSearch(inputFileName, outputFileName, numThreads, searchString)==0)
+        if (splitAndProcessBinaryFileForSearch(inputFileName, outputFileName, numThreads, searchString) == 0)
             cout << "The lookup function is successful." << endl;
         else
             cout << "Error in running the lookup function!" << endl;
     } // lookup operation flag
-    else if(operationMode == "-r"){ // lookup and replace operation flag
-        
+    else if (operationMode == "-r")
+    { // lookup and replace operation flag
+
     } // lookup and replace operation flag
-    else{ // error 
+    else
+    { // error
         cerr << "Invalid operation: " << argv[2] << endl;
         return 1;
     }
 
-
-
-     // For testing ...
-    //printBinaryFile(outputFileNameBin);
+    // For testing ...
+    // printBinaryFile(outputFileNameBin);
 
     // cout << "Sleep for one second..\n";
     // this_thread::sleep_for(chrono::seconds(1));
@@ -226,15 +229,11 @@ int main(int argc, char * argv[]) {
     return 0;
 } // main function
 
-
-
-/* 
+/*
 --------------------------
-    OTHER FUNCTIONS 
+    OTHER FUNCTIONS
 --------------------------
 */
-
-
 
 // Abbas Reached here ...
 /*
@@ -245,162 +244,127 @@ Then, lookup and match byte-by-byte.
 If there is a match, increment a counter.
 - Return the value of the counter.
 */
-uint8_t Lookup_Function(const string& inputFileNameBin, streampos start, streampos end, string searchString){
-    
-    
+uint32_t Lookup_Function(
+    const string &inputFileNameBin,
+    streampos start,
+    streampos end,
+    string searchString,
+    int threadIndex,
+    vector<uint32_t> &results)
+{
+
     // Compress the searchString text to code-words
     vector<string> tokens;
     vector<uint8_t> lineCodeWords;
-    size_t lineCodeWordsSize;
+    uint16_t lineCodeWordsSize;
 
     // Process the current line
-    tokens = processLineChar(searchString); // Process the line
-    lineCodeWords = convertSearchStringToCodeWord(tokens); // Generate the code words
-    lineCodeWordsSize = lineCodeWords.size();
+    tokens = processLineChar(searchString);                // Process the line
+    lineCodeWords = convertSearchStringToCodeWord(tokens); // Generate the code words for the search string
+    lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
+    uint16_t byteIndex = 0; // index of the searchString byteCode
 
-    // debug
+    // -- for debug --
     cout << "Code-word size: " << lineCodeWordsSize << endl;
 
-    // // Compare the searchString code-words over the compressed file    
-    // vector<uint8_t> byteCodes;
-    // uint32_t tmpSerial = 0, finalSerial = 0;
-    // string word;
+    // Compare the searchString code-words over the compressed file
+    uint32_t tmpSerial = 0;
 
-    // // Open the file in binary mode
-    // ifstream inFile(inputFileNameBin, ios::binary);
-    // if (!inFile) {
-    //     cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
-    //     return -1;
-    // }
-    
-    // // Set the file pointer to the start of this thread's chunk
-    // inFile.seekg(start); // Move file pointer to start position
+    // Open the file in binary mode
+    ifstream inFile(inputFileNameBin, ios::binary);
+    if (!inFile)
+    {
+        cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
+        return -1;
+    }
+
+    // Set the file pointer to the start of this thread's chunk
+    inFile.seekg(start); // Move file pointer to start position
+
+    // Lock before writing to the output file
+    lock_guard<mutex> lock(fileMutex);
+    uint32_t matchCount = 0;
+    uint32_t byteCount = 0;
+    uint32_t toSkip = 0;
 
 
-    // // Lock before writing to the output file
-    // lock_guard<mutex> lock(fileMutex);
+    char byte;
+    cout << "Reading file byte by byte:" << endl;
 
-    // // -- We don't need an output file, compare within a compressed file without decompression --
-    // // ofstream outFile(outputFileNameText, ios::app); // Open in append mode
-    // // if (!outFile) {
-    // //     cerr << "Error: Could not open file " << outputFileNameText << " for appending." << endl;
-    // //     return -1;
-    // // }
+    // Read the file byte by byte
+    // while (inFile.read(&byte, 1)) {
+    while (inFile.peek() != EOF && inFile.tellg() < end) // peek() -> checks the next character without advancing the file pointer.
+    {                     
+        inFile.get(byte); // reads the next byte
 
-    // uint8_t nextByte; // Variable to store each byte
-    // size_t byteIndex = 0; // Optional: Index of the byte being read
-    // bool NEXT_CAP = false;
-    // int serial = 0;
-    // uint32_t count = 0;
+        // -- for debug -- 
+        byteCount++;
 
-    // char byte;
-    // cout << "Reading file byte by byte:" << endl;
+        tmpSerial = static_cast<uint8_t>(byte);
 
-    // // Read the file byte by byte
-    // //while (inFile.read(&byte, 1)) {
-    // while (inFile.peek() != EOF && inFile.tellg() < end) { // peek() -> checks the next character without advancing the file pointer.
-    //     inFile.get(byte); // reads the next byte 
+        if((tmpSerial >> 1) == NEXT_SPECIAL_CODE && tmpSerial != lineCodeWords[byteIndex])
+        //if((tmpSerial >> 1) == NEXT_SPECIAL_CODE)
+        {
+            inFile.get(byte);
+            toSkip = static_cast<uint32_t>(byte);
+            inFile.ignore(toSkip);
 
-    //     tmpSerial = static_cast<uint8_t>(byte);
-        
-    //     /* 
-    //     ----------
-    //     To check the LSb of the byte: 
-    //     '1' --> there is a next byte. 
-    //     '0' --> last byte in the codeWord sequence
-    //     ----------
-    //     */
-    //     nextByte = tmpSerial % 2; 
-        
-    //     tmpSerial = tmpSerial >> 1; // ignore the LSb after reading it
-        
-    //     if(nextByte==0){
-    //         // Finalize the concatenated serial number
-    //         finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, tmpSerial, count));
-            
-    //         /*
-    //         ----------
-    //         Note:
-    //         The variable "count" is used to count the number of ones 
-    //         realized in the codeWord while reading each byte separately.
-    //         ----------
-    //         */
-    //         if(count == 1) // TWO CODE
-    //             finalSerial += TWO_BYTE_OFFSET;
-    //         else if(count == 2) // THREE CODE
-    //             finalSerial += THREE_BYTE_OFFSET;
-            
+            // -- for debug -- 
+            byteCount += toSkip + 1;
 
-    //         if(finalSerial == SPACE_CODE){ // space
-    //             outFile << " ";
-    //         }
-    //         else if (finalSerial == NEW_LINE_CODE){ // newline
-    //             //cout << "NEW LINE\n";
-    //             outFile << "\n";
-    //         }
-    //         else if (finalSerial == NEXT_CAPITAL_CODE){ // next uppercase (capital letter) character
-    //             //cout << "NEXT CAP\n";
-    //             NEXT_CAP = true;
-    //         }
-    //         else if (finalSerial == NEXT_SPECIAL_CODE){ // next special codeWord
-    //             // next special codeWord bytes ...
-    //             // To-Do ...
-    //             word = SPECIAL_CODE_WORD_READER(&inFile);
-    //             outFile << word;
-    //         }
-    //         else{ // check the dictionary hash table
+            byteIndex = 0;
+
+            //cout << toSkip << ""
+        }
+        else
+        {
+            if (tmpSerial == lineCodeWords[byteIndex]) // check the searchString byte with the corresponding byte in the compressed file
+            {
+                byteIndex++;
+            }
+            else
+            {
+                byteIndex = 0;
+            }
+
+            if (byteIndex == lineCodeWordsSize) // reset byteIndex if it exeeds the size of the searchString byteCode
+            {
+                byteIndex = 0;
+                matchCount++;
                 
-    //             // Check the word in the dictionary hash table
-    //             //word = dictMapCode[finalSerial];
+                // -- for debug --
+                //cout << "Match in byteCount = " << byteCount << endl;
+                //cout << "The byte value in the file is: " << static_cast<int>(tmpSerial) << endl;
+            }
+        }
 
-    //             // Check the word in the dictionary array of words
-    //             word = dictMapCodeArray[finalSerial];
-                
-    //             if(NEXT_CAP){
-    //                 // Change the first letter of the word to uppercase character
-    //                 word[0] = toupper(word[0]);
+        if (inFile.tellg() >= end)
+        {
+            break; // break after its own part of the binary file
+        }
 
-    //                 // reset the NEXT_CAP to false
-    //                 NEXT_CAP = false;
-    //             }
+    } // while loop: read byte-by-byte
 
-    //             outFile << word;
-    //         } // end of else 'check the dictionary hash table'
+    if (inFile.eof())
+    {
+        cout << "End of file reached." << endl;
+    }
+    else if (inFile.fail())
+    {
+        cerr << "Error: Failed to read the file." << endl;
+    }
 
-    //         // reset both finalSerial and tmpSerial
-    //         tmpSerial = 0;
-    //         finalSerial = 0;
-    //         count = 0;
+    cout << "byteCount reached = " << byteCount << endl;
+    inFile.close();
 
-    //     } // if (nextByte==0)
-    //     else{ // if (nextByte==1)
-    //         //finalSerial = (finalSerial << 7) | tmpSerial;
-    //         finalSerial = concatenateBytes(finalSerial, tmpSerial, count);
-    //         count++;
-    //     }
-        
-    //     byteIndex++;
-
-    //     if (inFile.tellg() >= end) break; // break after its own part of the binary file 
-    // }
-
-    // if (inFile.eof()) {
-    //     cout << "End of file reached." << endl;
-    // } else if (inFile.fail()) {
-    //     cerr << "Error: Failed to read the file." << endl;
-    // }
-
-    // inFile.close();
-    // outFile.close();
+    results[threadIndex] = matchCount; // return the matched values found in the compressed file
 
     return 0;
 }
 
-
-
-
 // *** Consecutive Array for Decompression ***
-uint8_t Build_Dictionary_Table_Decompression(){
+uint8_t Build_Dictionary_Table_Decompression()
+{
     // Variables to store each line and word
     string line, word;
     uint32_t serial = CODE_WORD_OFFSET; // Start serializing after the the serialized number of all reserved codeWords
@@ -409,21 +373,23 @@ uint8_t Build_Dictionary_Table_Decompression(){
     ifstream file(dictFilename);
 
     // Check if the file is open
-    if (!file.is_open()) {
+    if (!file.is_open())
+    {
         cerr << "Error opening file: " << dictFilename << endl;
         return 1;
     }
 
     // Read the file line by line
-    while (getline(file, line)) {
+    while (getline(file, line))
+    {
         stringstream ss(line); // Use a stringstream to parse the line
-        string temp; // To hold the "count" column which we will ignore
-        
+        string temp;           // To hold the "count" column which we will ignore
+
         // Get the word from the line
-        // getline(ss, word, ','); 
+        // getline(ss, word, ',');
         // getline(ss, temp, ','); // Ignore the second column (count)
-        getline(ss, word, '\n'); 
-        
+        getline(ss, word, '\n');
+
         dictMapCodeArray[serial] = word;
         serial++;
     }
@@ -432,7 +398,7 @@ uint8_t Build_Dictionary_Table_Decompression(){
     file.close();
 
     // ** for testing ... **
-    cout << "\nTotal words = " << serial-1 << "\n";
+    cout << "\nTotal words = " << serial - 1 << "\n";
     cout << "The hash map for decompresssion has been generated successfully!\n\n";
 
     // // Test the hash map
@@ -463,12 +429,12 @@ uint8_t Build_Dictionary_Table_Decompression(){
 //     while (getline(file, line)) {
 //         stringstream ss(line); // Use a stringstream to parse the line
 //         string temp; // To hold the "count" column which we will ignore
-        
+
 //         // Get the word from the line
-//         // getline(ss, word, ','); 
+//         // getline(ss, word, ',');
 //         // getline(ss, temp, ','); // Ignore the second column (count)
-//         getline(ss, word, '\n'); 
-        
+//         getline(ss, word, '\n');
+
 //         dictMapCode[serial] = word;
 //         serial++;
 //     }
@@ -489,8 +455,8 @@ uint8_t Build_Dictionary_Table_Decompression(){
 //     return 0;
 // }
 
-
-uint8_t Build_Dictionary_Table_Compression(){
+uint8_t Build_Dictionary_Table_Compression()
+{
     // Variables to store each line and word
     string line, word;
     uint32_t serial = CODE_WORD_OFFSET; // Start serializing from 3
@@ -499,21 +465,23 @@ uint8_t Build_Dictionary_Table_Compression(){
     ifstream file(dictFilename);
 
     // Check if the file is open
-    if (!file.is_open()) {
+    if (!file.is_open())
+    {
         cerr << "Error opening file: " << dictFilename << endl;
         return 1;
     }
 
     // Read the file line by line
-    while (getline(file, line)) {
+    while (getline(file, line))
+    {
         stringstream ss(line); // Use a stringstream to parse the line
-        string temp; // To hold the "count" column which we will ignore
-        
+        string temp;           // To hold the "count" column which we will ignore
+
         // Get the word from the line
-        // getline(ss, word, ','); 
+        // getline(ss, word, ',');
         // getline(ss, temp, ','); // Ignore the second column (count)
-        getline(ss, word, '\n'); 
-        
+        getline(ss, word, '\n');
+
         dictMapWord[word] = serial;
         serial++;
     }
@@ -522,7 +490,7 @@ uint8_t Build_Dictionary_Table_Compression(){
     file.close();
 
     //** for testing ... **
-    cout << "\nTotal words = " << serial-1 << "\n";
+    cout << "\nTotal words = " << serial - 1 << "\n";
     cout << "The hash map for compression has been generated successfully!\n\n";
 
     // // Test the hash map
@@ -534,13 +502,18 @@ uint8_t Build_Dictionary_Table_Compression(){
     return 0;
 }
 
-
 // Function to read a file line by line and process each line
-//uint8_t Compression_Function() {
-uint8_t Compression_Function(const string& inputFileText, streampos start, streampos end, const string& outputFileBin){
+// uint8_t Compression_Function() {
+uint8_t Compression_Function(
+    const string &inputFileText,
+    streampos start,
+    streampos end,
+    const string &outputFileBin)
+{
 
     ifstream inFile(inputFileText); // Open the file
-    if (!inFile) {
+    if (!inFile)
+    {
         cerr << "Error opening file: " << inputFileNameText << endl;
         return -1;
     }
@@ -549,7 +522,8 @@ uint8_t Compression_Function(const string& inputFileText, streampos start, strea
     inFile.seekg(start); // Move file pointer to start position
 
     // Adjust the start position to the nearest newline
-    if (start > 0) { // Not the first chunk
+    if (start > 0)
+    { // Not the first chunk
         string temp;
         getline(inFile, temp); // Skip the partial line
     }
@@ -565,45 +539,50 @@ uint8_t Compression_Function(const string& inputFileText, streampos start, strea
 
     lock_guard<mutex> lock(fileMutex);
     // Open the output file in binary mode and in append mode
-    ofstream outFile(outputFileBin, ios::binary | ios::app); 
-    if (!outFile) {
+    ofstream outFile(outputFileBin, ios::binary | ios::app);
+    if (!outFile)
+    {
         cerr << "Error: Could not open the file." << endl;
         return 1;
     }
 
     vector<string> tokens;
     vector<uint8_t> lineCodeWords;
-    const char* buffer;
+    const char *buffer;
     size_t bufferSize;
     string line;
-
 
     //*** Method 1 ***
     string currentLine, nextLine;
 
     // Read the first line before entering the loop
-    //if (inFile.tellg() < end && getline(inFile, currentLine)) {
-    if (getline(inFile, currentLine)) {
-        while (inFile.tellg() <= end) { // Check if the next position would exceed 'end'
+    // if (inFile.tellg() < end && getline(inFile, currentLine)) {
+    if (getline(inFile, currentLine))
+    {
+        while (inFile.tellg() <= end)
+        { // Check if the next position would exceed 'end'
             // Peek ahead to check for the next line
-            if (getline(inFile, nextLine)) {
+            if (getline(inFile, nextLine))
+            {
                 // Process the current line
-                tokens = processLineChar(currentLine); // Process the line
+                tokens = processLineChar(currentLine);           // Process the line
                 lineCodeWords = convertStringToCodeWord(tokens); // Generate the code words
 
-                buffer = reinterpret_cast<const char*>(lineCodeWords.data());
+                buffer = reinterpret_cast<const char *>(lineCodeWords.data());
                 bufferSize = lineCodeWords.size();
                 outFile.write(buffer, bufferSize);
 
                 // Move to the next line
                 currentLine = nextLine;
-            } else {
+            }
+            else
+            {
                 // Handle the last line (no next line available)
-                tokens = processLineChar(currentLine); // Process the line
+                tokens = processLineChar(currentLine);           // Process the line
                 lineCodeWords = convertStringToCodeWord(tokens); // Generate the code words
 
                 lineCodeWords.pop_back(); // remove the last new line at the end of file
-                buffer = reinterpret_cast<const char*>(lineCodeWords.data());
+                buffer = reinterpret_cast<const char *>(lineCodeWords.data());
                 bufferSize = lineCodeWords.size();
                 outFile.write(buffer, bufferSize);
 
@@ -613,7 +592,7 @@ uint8_t Compression_Function(const string& inputFileText, streampos start, strea
         }
     }
 
-    inFile.close(); // Close the input file
+    inFile.close();  // Close the input file
     outFile.close(); // Close the output file
 
     return 0;
@@ -625,57 +604,70 @@ A function used to process each line read from a plain text file separately.
 It will recognize between words, characters, uppercase, and puctuation characters.
 */
 
-
 /*
 -- processLineChar Function --
 We will organize the process in the following steps:
 1. Check if it is alphabets or numbers
     1.1. If uppercase and the word is not empty, then assign a code-word for uppercase
     1.2. Add the character to the word string
-2. Check for ' and 's 
+2. Check for ' and 's
 3. Check punct
 4. Check space
 */
-vector<string> processLineChar(const string &line) {
+vector<string> processLineChar(const string &line)
+{
     vector<string> result;
     vector<uint8_t> lineCodeWords;
     string word;
     bool startsWithUppercase = false; // Flag to indicate if the word starts with an uppercase letter
 
-    for (size_t i = 0; i < line.size(); ++i) {
+    for (size_t i = 0; i < line.size(); ++i)
+    {
         char ch = line[i];
 
-        if (isalnum(ch)) { // If the character is alphanumeric, build the word
-            if (word.empty() && isupper(ch)) {
-                result.push_back(string(1, 0xff)); // '0xff' represents that the next word starts with an uppercase character. 
-                startsWithUppercase = true; // Set the flag if the first character is uppercase
-                //cout << "Uppercase character..\n"; // for testing... 
+        if (isalnum(ch))
+        { // If the character is alphanumeric, build the word
+            if (word.empty() && isupper(ch))
+            {
+                result.push_back(string(1, 0xff)); // '0xff' represents that the next word starts with an uppercase character.
+                startsWithUppercase = true;        // Set the flag if the first character is uppercase
+                // cout << "Uppercase character..\n"; // for testing...
             }
-            //ch = tolower(ch); // set the uppercase character to lowercase character.
+            // ch = tolower(ch); // set the uppercase character to lowercase character.
             word += ch;
-        } 
-        else{
-            //word[0] = tolower(word[0]); // set the first uppercase character to lowercase character.
-            if (ch == '\'' || (i + 2 <= line.size() && line.substr(i, 3) == "’")) {
-                if (!word.empty()) {
+        }
+        else
+        {
+            // word[0] = tolower(word[0]); // set the first uppercase character to lowercase character.
+            if (ch == '\'' || (i + 2 <= line.size() && line.substr(i, 3) == "’"))
+            {
+                if (!word.empty())
+                {
                     result.push_back(word);
                     word.clear();
                 }
                 result.push_back("'");
 
                 // Check for 's' after the apostrophe
-                if (i + 1 < line.size() && line[i + 1] == 's') {
+                if (i + 1 < line.size() && line[i + 1] == 's')
+                {
                     result.push_back("s");
                     ++i; // Skip the 's'
                 }
-            } else if (ispunct(ch)) { // Handle punctuation
-                if (!word.empty()) {
+            }
+            else if (ispunct(ch))
+            { // Handle punctuation
+                if (!word.empty())
+                {
                     result.push_back(word);
                     word.clear();
                 }
                 result.push_back(string(1, ch)); // Add punctuation as a separate string
-            } else if (isspace(ch)) { // Handle spaces
-                if (!word.empty()) {
+            }
+            else if (isspace(ch))
+            { // Handle spaces
+                if (!word.empty())
+                {
                     result.push_back(word);
                     word.clear();
                 }
@@ -687,14 +679,16 @@ vector<string> processLineChar(const string &line) {
     }
 
     // Add the last word if there is any
-    if (!word.empty()) {
+    if (!word.empty())
+    {
         result.push_back(word);
     }
 
     return result; // return a vector of separate strings
 }
 
-vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
+vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet)
+{
 
     vector<uint8_t> lineCodeWords;
     vector<uint8_t> byteCodes;
@@ -703,12 +697,12 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
     uint32_t serial = 0, inputNumber = 0;
     string word;
 
-    /* 
+    /*
     *** Open the output file in appen mode **
-    WARNING: 
+    WARNING:
     Since the output file is in an append mode,
     you need to delete the output file after each run.
-    
+
     *** Generate T0 ***
     Have reserved values:
     1) Space                => 0x0
@@ -716,56 +710,65 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
     3) Next Capital letter  => 0x2 --> in EPIC format, shift left by 1 => 0x4
     */
 
-
-    for (size_t i = 0; i < wordsSet.size(); ++i) {
+    for (size_t i = 0; i < wordsSet.size(); ++i)
+    {
         word = wordsSet[i];
 
-        //serial = dictMapWord[word];
-        if(!word.empty() && static_cast<uint8_t>(word[0]) == 0x20){ // compare with SPACE in ASCII
+        // serial = dictMapWord[word];
+        if (!word.empty() && static_cast<uint8_t>(word[0]) == 0x20)
+        {                                        // compare with SPACE in ASCII
             lineCodeWords.push_back(SPACE_CODE); // SPACE codeWord
         }
-        else if(!word.empty() && static_cast<uint8_t>(word[0]) == 0xFF){ // compare with Next Uppercase character code (0xFF)
+        else if (!word.empty() && static_cast<uint8_t>(word[0]) == 0xFF)
+        {                                                                              // compare with Next Uppercase character code (0xFF)
             lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_CAPITAL_CODE)); // next uppercase letter codeWord
         }
-        else{
-            
+        else
+        {
+
             /*
             NOTE:
             - In the 'unordered_map', the returned value of 'not found' hash key is zero '0'.
             */
             string tmpWord = word;
             tmpWord[0] = tolower(tmpWord[0]); // set the first uppercase character to lowercase character.
-            serial = dictMapWord[tmpWord]; // read the value of the word in the dictionary hash table
-            
-            if(serial == 0) { // NOT FOUND in the hash table - SPECIAL codeWord
+            serial = dictMapWord[tmpWord];    // read the value of the word in the dictionary hash table
+
+            if (serial == 0)
+            { // NOT FOUND in the hash table - SPECIAL codeWord
                 // Call a function to generate a special codeWord
                 byteCodes = SPECIAL_CODE_WORD_GENERATOR(word);
                 lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)); // next special codeWord
 
                 // increment the special code word counter
                 specialCodeWordCounter++;
-                
+
                 // for debug ..
                 // cout << "special code: " << word << endl;
             }
-            else{
-                //word = tmpWord; // set the first character to a lowercase letter
+            else
+            {
+                // word = tmpWord; // set the first character to a lowercase letter
 
-                if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding
-                    inputNumber = serial; // add the offset if the reserved codeWords (i.e. space, newline, ..)
+                if (serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND)
+                {                                                     // ONE BYTE encoding
+                    inputNumber = serial;                             // add the offset if the reserved codeWords (i.e. space, newline, ..)
                     byteCodes = ONE_BYTE_CODE_GENERATOR(inputNumber); // generate a single byte codeWord
                 }
-                else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
+                else if (serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND)
+                { // TWO BYTE encoding
                     inputNumber = serial - TWO_BYTE_OFFSET;
                     byteCodes = TWO_BYTE_CODE_GENERATOR(inputNumber); // generate a two bytes codeWord
                 }
-                else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){
+                else if (serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND)
+                {
                     inputNumber = serial - (THREE_BYTE_OFFSET);
                     byteCodes = THREE_BYTE_CODE_GENERATOR(inputNumber); // generate a three bytes codeWord
                 }
-                else{
+                else
+                {
                     // Add word to the map with the current serial number
-                    //dictMapWord[word] = serial;
+                    // dictMapWord[word] = serial;
                 }
             }
 
@@ -774,15 +777,16 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet) {
             byteCodes.clear();
 
         } // end of else for special codeWords
-        
-    } // end of the for loop    
-    
+
+    } // end of the for loop
+
     lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEW_LINE_CODE)); // new line codeWord
 
     return lineCodeWords;
 }
 
-vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet) {
+vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
+{
 
     vector<uint8_t> lineCodeWords;
     vector<uint8_t> byteCodes;
@@ -791,12 +795,12 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet) {
     uint32_t serial = 0, inputNumber = 0;
     string word;
 
-    /* 
+    /*
     *** Open the output file in appen mode **
-    WARNING: 
+    WARNING:
     Since the output file is in an append mode,
     you need to delete the output file after each run.
-    
+
     *** Generate T0 ***
     Have reserved values:
     1) Space                => 0x0
@@ -804,56 +808,65 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet) {
     3) Next Capital letter  => 0x2 --> in EPIC format, shift left by 1 => 0x4
     */
 
-
-    for (size_t i = 0; i < wordsSet.size(); ++i) {
+    for (size_t i = 0; i < wordsSet.size(); ++i)
+    {
         word = wordsSet[i];
 
-        //serial = dictMapWord[word];
-        if(!word.empty() && static_cast<uint8_t>(word[0]) == 0x20){ // compare with SPACE in ASCII
+        // serial = dictMapWord[word];
+        if (!word.empty() && static_cast<uint8_t>(word[0]) == 0x20)
+        {                                        // compare with SPACE in ASCII
             lineCodeWords.push_back(SPACE_CODE); // SPACE codeWord
         }
-        else if(!word.empty() && static_cast<uint8_t>(word[0]) == 0xFF){ // compare with Next Uppercase character code (0xFF)
+        else if (!word.empty() && static_cast<uint8_t>(word[0]) == 0xFF)
+        {                                                                              // compare with Next Uppercase character code (0xFF)
             lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_CAPITAL_CODE)); // next uppercase letter codeWord
         }
-        else{
-            
+        else
+        {
+
             /*
             NOTE:
             - In the 'unordered_map', the returned value of 'not found' hash key is zero '0'.
             */
             string tmpWord = word;
             tmpWord[0] = tolower(tmpWord[0]); // set the first uppercase character to lowercase character.
-            serial = dictMapWord[tmpWord]; // read the value of the word in the dictionary hash table
-            
-            if(serial == 0) { // NOT FOUND in the hash table - SPECIAL codeWord
+            serial = dictMapWord[tmpWord];    // read the value of the word in the dictionary hash table
+
+            if (serial == 0)
+            { // NOT FOUND in the hash table - SPECIAL codeWord
                 // Call a function to generate a special codeWord
                 byteCodes = SPECIAL_CODE_WORD_GENERATOR(word);
                 lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)); // next special codeWord
 
                 // increment the special code word counter
                 specialCodeWordCounter++;
-                
+
                 // for debug ..
                 // cout << "special code: " << word << endl;
             }
-            else{
-                //word = tmpWord; // set the first character to a lowercase letter
+            else
+            {
+                // word = tmpWord; // set the first character to a lowercase letter
 
-                if(serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND){ // ONE BYTE encoding
-                    inputNumber = serial; // add the offset if the reserved codeWords (i.e. space, newline, ..)
+                if (serial >= ONE_BYTE_LOWER_BOUND && serial < ONE_BYTE_BOUND)
+                {                                                     // ONE BYTE encoding
+                    inputNumber = serial;                             // add the offset if the reserved codeWords (i.e. space, newline, ..)
                     byteCodes = ONE_BYTE_CODE_GENERATOR(inputNumber); // generate a single byte codeWord
                 }
-                else if(serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND){ // TWO BYTE encoding
+                else if (serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND)
+                { // TWO BYTE encoding
                     inputNumber = serial - TWO_BYTE_OFFSET;
                     byteCodes = TWO_BYTE_CODE_GENERATOR(inputNumber); // generate a two bytes codeWord
                 }
-                else if(serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND){
+                else if (serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND)
+                {
                     inputNumber = serial - (THREE_BYTE_OFFSET);
                     byteCodes = THREE_BYTE_CODE_GENERATOR(inputNumber); // generate a three bytes codeWord
                 }
-                else{
+                else
+                {
                     // Add word to the map with the current serial number
-                    //dictMapWord[word] = serial;
+                    // dictMapWord[word] = serial;
                 }
             }
 
@@ -862,27 +875,29 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet) {
             byteCodes.clear();
 
         } // end of else for special codeWords
-        
-    } // end of the for loop    
-    
+
+    } // end of the for loop
+
     // We don't need to add a newline for the search string.
-    //lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEW_LINE_CODE)); // new line codeWord
+    // lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEW_LINE_CODE)); // new line codeWord
 
     return lineCodeWords;
 }
 
-uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameText){
+uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, streampos end, const string &outputFileNameText)
+{
     vector<uint8_t> byteCodes;
     uint32_t tmpSerial = 0, finalSerial = 0;
     string word;
 
     // Open the file in binary mode
     ifstream inFile(inputFileNameBin, ios::binary);
-    if (!inFile) {
+    if (!inFile)
+    {
         cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
         return -1;
     }
-    
+
     // Set the file pointer to the start of this thread's chunk
     inFile.seekg(start); // Move file pointer to start position
 
@@ -899,12 +914,13 @@ uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, 
     lock_guard<mutex> lock(fileMutex);
 
     ofstream outFile(outputFileNameText, ios::app); // Open in append mode
-    if (!outFile) {
+    if (!outFile)
+    {
         cerr << "Error: Could not open file " << outputFileNameText << " for appending." << endl;
         return -1;
     }
 
-    uint8_t nextByte; // Variable to store each byte
+    uint8_t nextByte;     // Variable to store each byte
     size_t byteIndex = 0; // Optional: Index of the byte being read
     bool NEXT_CAP = false;
     int serial = 0;
@@ -914,66 +930,73 @@ uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, 
     cout << "Reading file byte by byte:" << endl;
 
     // Read the file byte by byte
-    //while (inFile.read(&byte, 1)) {
-    while (inFile.peek() != EOF && inFile.tellg() < end) { // peek() -> checks the next character without advancing the file pointer.
-        inFile.get(byte); // reads the next byte 
+    // while (inFile.read(&byte, 1)) {
+    while (inFile.peek() != EOF && inFile.tellg() < end)
+    {                     // peek() -> checks the next character without advancing the file pointer.
+        inFile.get(byte); // reads the next byte
 
         tmpSerial = static_cast<uint8_t>(byte);
-        
-        /* 
+
+        /*
         ----------
-        To check the LSb of the byte: 
-        '1' --> there is a next byte. 
+        To check the LSb of the byte:
+        '1' --> there is a next byte.
         '0' --> last byte in the codeWord sequence
         ----------
         */
-        nextByte = tmpSerial % 2; 
-        
+        nextByte = tmpSerial % 2;
+
         tmpSerial = tmpSerial >> 1; // ignore the LSb after reading it
-        
-        if(nextByte==0){
+
+        if (nextByte == 0)
+        {
             // Finalize the concatenated serial number
             finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, tmpSerial, count));
-            
+
             /*
             ----------
             Note:
-            The variable "count" is used to count the number of ones 
+            The variable "count" is used to count the number of ones
             realized in the codeWord while reading each byte separately.
             ----------
             */
-            if(count == 1) // TWO CODE
+            if (count == 1) // TWO CODE
                 finalSerial += TWO_BYTE_OFFSET;
-            else if(count == 2) // THREE CODE
+            else if (count == 2) // THREE CODE
                 finalSerial += THREE_BYTE_OFFSET;
-            
 
-            if(finalSerial == SPACE_CODE){ // space
+            if (finalSerial == SPACE_CODE)
+            { // space
                 outFile << " ";
             }
-            else if (finalSerial == NEW_LINE_CODE){ // newline
-                //cout << "NEW LINE\n";
+            else if (finalSerial == NEW_LINE_CODE)
+            { // newline
+                // cout << "NEW LINE\n";
                 outFile << "\n";
             }
-            else if (finalSerial == NEXT_CAPITAL_CODE){ // next uppercase (capital letter) character
-                //cout << "NEXT CAP\n";
+            else if (finalSerial == NEXT_CAPITAL_CODE)
+            { // next uppercase (capital letter) character
+                // cout << "NEXT CAP\n";
                 NEXT_CAP = true;
             }
-            else if (finalSerial == NEXT_SPECIAL_CODE){ // next special codeWord
+            else if (finalSerial == NEXT_SPECIAL_CODE)
+            { // next special codeWord
                 // next special codeWord bytes ...
                 // To-Do ...
                 word = SPECIAL_CODE_WORD_READER(&inFile);
                 outFile << word;
             }
-            else{ // check the dictionary hash table
-                
+            else
+            { // check the dictionary hash table
+
                 // Check the word in the dictionary hash table
-                //word = dictMapCode[finalSerial];
+                // word = dictMapCode[finalSerial];
 
                 // Check the word in the dictionary array of words
                 word = dictMapCodeArray[finalSerial];
-                
-                if(NEXT_CAP){
+
+                if (NEXT_CAP)
+                {
                     // Change the first letter of the word to uppercase character
                     word[0] = toupper(word[0]);
 
@@ -990,20 +1013,25 @@ uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, 
             count = 0;
 
         } // if (nextByte==0)
-        else{ // if (nextByte==1)
-            //finalSerial = (finalSerial << 7) | tmpSerial;
+        else
+        { // if (nextByte==1)
+            // finalSerial = (finalSerial << 7) | tmpSerial;
             finalSerial = concatenateBytes(finalSerial, tmpSerial, count);
             count++;
         }
-        
+
         byteIndex++;
 
-        if (inFile.tellg() >= end) break; // break after its own part of the binary file 
+        if (inFile.tellg() >= end)
+            break; // break after its own part of the binary file
     }
 
-    if (inFile.eof()) {
+    if (inFile.eof())
+    {
         cout << "End of file reached." << endl;
-    } else if (inFile.fail()) {
+    }
+    else if (inFile.fail())
+    {
         cerr << "Error: Failed to read the file." << endl;
     }
 
@@ -1013,57 +1041,63 @@ uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, 
     return 0;
 }
 
-uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count){
+uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count)
+{
     // if (count == 0)
     //     return tmp;
     // else
-    return final | (tmp << (7*count));
+    return final | (tmp << (7 * count));
 }
 
 /*
 NOTE: 'cerr' function.
-In C++, cerr is the standard error stream used to output the errors. 
-It is an instance of the ostream class and is un-buffered, 
-so it is used when we need to display the error message immediately and 
-does not store the error message to display later. 
-The ‘c’ in cerr refers to “character” and ‘err’ means “error”, 
+In C++, cerr is the standard error stream used to output the errors.
+It is an instance of the ostream class and is un-buffered,
+so it is used when we need to display the error message immediately and
+does not store the error message to display later.
+The ‘c’ in cerr refers to “character” and ‘err’ means “error”,
 Hence cerr means “character error”.
-On the other hand, cout is used for standard output, 
-and the string message may be buffered and 
+On the other hand, cout is used for standard output,
+and the string message may be buffered and
 displayed after the program execution completes.
 */
 
-string SPECIAL_CODE_WORD_READER(ifstream *filePtr) {
-    if (!filePtr || !filePtr->is_open()) {
+string SPECIAL_CODE_WORD_READER(ifstream *filePtr)
+{
+    if (!filePtr || !filePtr->is_open())
+    {
         cerr << "Error: Invalid or unopened file pointer!" << endl;
         return "";
     }
 
     // Read the size byte (first byte)
     uint8_t sizeByte;
-    filePtr->read(reinterpret_cast<char*>(&sizeByte), sizeof(uint8_t));
-    if (filePtr->eof()) {
+    filePtr->read(reinterpret_cast<char *>(&sizeByte), sizeof(uint8_t));
+    if (filePtr->eof())
+    {
         cerr << "Error: File is empty or invalid!" << endl;
         return "";
     }
 
     // Determine the number of characters
-    //size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
-    size_t numCharacters = sizeByte; 
+    // size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
+    size_t numCharacters = sizeByte;
 
     // Read the remaining bytes (numCharacters bytes)
     vector<uint8_t> bytes(numCharacters);
-    filePtr->read(reinterpret_cast<char*>(bytes.data()), numCharacters);
+    filePtr->read(reinterpret_cast<char *>(bytes.data()), numCharacters);
 
     // Check if the number of bytes read matches the expected number
-    if (filePtr->gcount() != static_cast<streamsize>(numCharacters)) {
+    if (filePtr->gcount() != static_cast<streamsize>(numCharacters))
+    {
         cerr << "Error: File does not contain the expected number of bytes!" << endl;
         return "";
     }
 
     // Decode the bytes into a string
     string result;
-    for (size_t i = 0; i < bytes.size(); ++i) {
+    for (size_t i = 0; i < bytes.size(); ++i)
+    {
         uint8_t byte = bytes[i];
         // if (i == bytes.size() - 1) {
         //     // Last byte: Right shift and ensure the least significant bit is 0
@@ -1083,9 +1117,11 @@ string SPECIAL_CODE_WORD_READER(ifstream *filePtr) {
     return result;
 }
 
-string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes) {
+string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
+{
     // Ensure the vector has at least one byte (the size byte)
-    if (bytes.empty()) {
+    if (bytes.empty())
+    {
         cerr << "Error: Empty byte vector!" << endl;
         return "";
     }
@@ -1095,7 +1131,8 @@ string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes) {
     size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
 
     // Validate that the size matches the vector length
-    if (bytes.size() != numCharacters + 1) {
+    if (bytes.size() != numCharacters + 1)
+    {
         cerr << "Error: Byte vector size does not match encoded size!" << endl;
         return "";
     }
@@ -1103,14 +1140,19 @@ string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes) {
     string result;
 
     // Decode the remaining bytes
-    for (size_t i = 1; i < bytes.size(); ++i) {
+    for (size_t i = 1; i < bytes.size(); ++i)
+    {
         uint8_t byte = bytes[i];
-        if (i == bytes.size() - 1) {
+        if (i == bytes.size() - 1)
+        {
             // Last byte: Right shift and ensure the least significant bit is 0
             byte = byte >> 1; // Drop the LSB
-        } else {
+        }
+        else
+        {
             // Other bytes: Right shift and ensure the least significant bit was 1
-            if ((byte & 0x01) != 1) {
+            if ((byte & 0x01) != 1)
+            {
                 cerr << "Error: Invalid byte format!" << endl;
                 return "";
             }
@@ -1124,19 +1166,21 @@ string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes) {
 
 /*
 'SPECIAL_CODE_GENERATOR' function:
-Generate 
+Generate
 */
-//vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input) {
-vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input) {
+// vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input) {
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input)
+{
     vector<uint8_t> result;
 
     // Calculate the number of upcoming bytes (excluding the first byte)
     uint8_t sizeByte = input.length();
-    //sizeByte = (sizeByte << 1) | 1; // Shift left by 1 and set the least significant bit to 1
-    result.push_back(sizeByte);     // Add the size byte to the vector
+    // sizeByte = (sizeByte << 1) | 1; // Shift left by 1 and set the least significant bit to 1
+    result.push_back(sizeByte); // Add the size byte to the vector
 
     // Process each character in the string
-    for (size_t i = 0; i < input.length(); ++i) {
+    for (size_t i = 0; i < input.length(); ++i)
+    {
         uint8_t byte = static_cast<uint8_t>(input[i]);
         // if (i == input.length() - 1) {
         //     // For the last byte, shift left by 1 and set the least significant bit to 0
@@ -1159,13 +1203,12 @@ vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input)
 {
     vector<uint8_t> codeWord;
 
-    uint8_t byte1 = Mask_Single_Byte(input); // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
+    uint8_t byte1 = Mask_Single_Byte(input);      // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
     byte1 = Shift_Left_with_Zero_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte1);
-    
+
     return codeWord;
 }
-
 
 /*
 'TWO_BYTE_CODE_GENERATOR' function:
@@ -1175,12 +1218,12 @@ vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input)
 {
     vector<uint8_t> codeWord;
 
-    uint8_t byte1 = Mask_Single_Byte(input); // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
+    uint8_t byte1 = Mask_Single_Byte(input);     // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
     byte1 = Shift_Left_with_One_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte1);
 
     uint8_t byte2 = Shift_Right_Seven_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
-    byte2 = Shift_Left_with_Zero_Inserted(byte2); // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
+    byte2 = Shift_Left_with_Zero_Inserted(byte2);       // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
     codeWord.push_back(byte2);
 
     return codeWord;
@@ -1196,60 +1239,65 @@ vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input)
     uint8_t byte1, byte2, byte3;
     uint32_t input_shitf1;
 
-    byte1 = Mask_Single_Byte(input); // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
+    byte1 = Mask_Single_Byte(input);             // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
     byte1 = Shift_Left_with_One_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte1);
 
     input_shitf1 = Shift_Right_Seven_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
-    byte2 = Mask_Single_Byte(input_shitf1); // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
-    byte2 = Shift_Left_with_One_Inserted(byte2); // shift 'byte2' to the left by 1, and insert '1' as the LSb
+    byte2 = Mask_Single_Byte(input_shitf1);            // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
+    byte2 = Shift_Left_with_One_Inserted(byte2);       // shift 'byte2' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte2);
 
     byte3 = Shift_Right_Seven_Positions(input_shitf1); // shift 'DICT_ORDER_NUM' to the right by 7 positions
-    byte3 = Shift_Left_with_Zero_Inserted(byte3); // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
+    byte3 = Shift_Left_with_Zero_Inserted(byte3);      // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
     codeWord.push_back(byte3);
 
     return codeWord;
 }
 
 // To mask the least significant byte
-uint8_t Mask_Single_Byte(uint32_t number){
+uint8_t Mask_Single_Byte(uint32_t number)
+{
     return MASK_BYTE & number;
 }
 
 // Shift a number to the left by one position,
 // and insert '1' as the LSbit.
-uint32_t Shift_Left_with_One_Inserted(uint32_t number){
+uint32_t Shift_Left_with_One_Inserted(uint32_t number)
+{
     return number << 1 | (0x1);
 }
 
 // Shift a number to the left by one position,
 // and insert '0' as the LSbit.
-uint32_t Shift_Left_with_Zero_Inserted(uint32_t number){
+uint32_t Shift_Left_with_Zero_Inserted(uint32_t number)
+{
     return number << 1;
 }
 
-uint32_t Shift_Right_Seven_Positions(uint32_t number){
+uint32_t Shift_Right_Seven_Positions(uint32_t number)
+{
     return number >> 7;
 }
-
 
 // Check if the least significant bit (LSb) is one.
 // If LSb is '1', then there is another byte code in the sequence.
 // This function is used in the decompression process.
-uint8_t Next_Byte_Available(uint8_t number){
-    //return number % 2; // return one or zero.
+uint8_t Next_Byte_Available(uint8_t number)
+{
+    // return number % 2; // return one or zero.
     return number & (0x1); // return one or zero: mask it with the LSb
 }
-
 
 /*
 A function to check ending of strings with Punctuation characters
 '\0' --> represenets a null character
 */
-char checkStringEndsWithPunctuation(const string &str) {
+char checkStringEndsWithPunctuation(const string &str)
+{
     // Check if the string is empty
-    if (str.empty()) {
+    if (str.empty())
+    {
         return '\0'; // Null character for empty string
     }
 
@@ -1257,7 +1305,8 @@ char checkStringEndsWithPunctuation(const string &str) {
     char lastChar = str.back();
 
     // Check if the last character is a punctuation character
-    if (ispunct(static_cast<unsigned char>(lastChar))) {
+    if (ispunct(static_cast<unsigned char>(lastChar)))
+    {
         return lastChar;
     }
 
@@ -1268,9 +1317,11 @@ char checkStringEndsWithPunctuation(const string &str) {
 /*
 A funxtion that checks a newline character in a string
 */
-bool endsWithNewline(const string &str) {
+bool endsWithNewline(const string &str)
+{
     // Check if the string is empty
-    if (str.empty()) {
+    if (str.empty())
+    {
         return false;
     }
 
@@ -1280,12 +1331,14 @@ bool endsWithNewline(const string &str) {
 
 /*
 Reads lines from a file.
-Use "endsWithNewline" function to check if lines 
+Use "endsWithNewline" function to check if lines
 end with a newline character.
 */
-void checkLinesInFile(const string &filePath) {
+void checkLinesInFile(const string &filePath)
+{
     ifstream file(filePath); // Open the file
-    if (!file) {
+    if (!file)
+    {
         cerr << "Error opening file: " << filePath << endl;
         return;
     }
@@ -1294,9 +1347,10 @@ void checkLinesInFile(const string &filePath) {
     int lineNumber = 1;
 
     // Read the file line by line
-    while (getline(file, line)) {
-        cout << "Line " << lineNumber << ": " 
-             << (endsWithNewline(line) ? "Ends with newline" : "Does not end with newline") 
+    while (getline(file, line))
+    {
+        cout << "Line " << lineNumber << ": "
+             << (endsWithNewline(line) ? "Ends with newline" : "Does not end with newline")
              << endl;
         lineNumber++;
     }
@@ -1305,21 +1359,24 @@ void checkLinesInFile(const string &filePath) {
 }
 
 // Print the hex code of the binary file for testing.
-void printBinaryFile(const string &filePath) {
-    ifstream file(filePath, ios::binary);  // Open the file in binary mode
-    if (!file) {
+void printBinaryFile(const string &filePath)
+{
+    ifstream file(filePath, ios::binary); // Open the file in binary mode
+    if (!file)
+    {
         cerr << "Error opening file: " << filePath << endl;
         return;
     }
 
     // Read the file contents into a vector of uint8_t
     vector<uint8_t> buffer((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
-    file.close();  // Close the file after reading
+    file.close(); // Close the file after reading
 
     cout << "Binary contents of " << filePath << ":" << endl;
-    for (size_t i = 0; i < buffer.size(); ++i) {
-        //cout << bitset<8>(buffer[i]) << " ";  // Print each byte as an 8-bit binary number
-        cout << hex << static_cast<int>(buffer[i]) << " ";  // Print each byte as HEX number
+    for (size_t i = 0; i < buffer.size(); ++i)
+    {
+        // cout << bitset<8>(buffer[i]) << " ";  // Print each byte as an 8-bit binary number
+        cout << hex << static_cast<int>(buffer[i]) << " "; // Print each byte as HEX number
     }
     cout << endl;
 }
@@ -1328,10 +1385,12 @@ void printBinaryFile(const string &filePath) {
 NOTE:
 It returns the number of lines-1.
 Because there is no newline character '\n' at the ennd of file.
-*/ 
-uint32_t countLinesInFile(const string &filePath) {
+*/
+uint32_t countLinesInFile(const string &filePath)
+{
     ifstream file(filePath);
-    if (!file) {
+    if (!file)
+    {
         cerr << "Error: Could not open file " << filePath << endl;
         return 0;
     }
@@ -1344,26 +1403,28 @@ uint32_t countLinesInFile(const string &filePath) {
     return lineCount;
 }
 
-
 // **********************************
 // Multi Threading Functions
 // **********************************
 
-
 // **** Text to codeWord (Binary) File ****
 
 // Function to merge binary files in order
-void mergeBinaryFiles(const vector<string>& tempFiles, const string& outputFile) {
+void mergeBinaryFiles(const vector<string> &tempFiles, const string &outputFile)
+{
     lock_guard<mutex> lock(fileMutex);
     ofstream outFile(outputFile, ios::binary);
-    if (!outFile) {
+    if (!outFile)
+    {
         cerr << "Error creating merged output file: " << outputFile << endl;
         return;
     }
 
-    for (const auto& tempFile : tempFiles) {
+    for (const auto &tempFile : tempFiles)
+    {
         ifstream inFile(tempFile, ios::binary);
-        if (!inFile) {
+        if (!inFile)
+        {
             cerr << "Error opening temp file: " << tempFile << endl;
             continue;
         }
@@ -1374,14 +1435,15 @@ void mergeBinaryFiles(const vector<string>& tempFiles, const string& outputFile)
     }
     outFile.close();
     cout << "Binary files merged into " << outputFile << endl;
-    
 }
 
 // Function to split a text file into contiguous chunks and process them
-uint8_t splitAndProcessTextFile(const string& inputFile, const string& outputFile, int numThreads) {
-    
+uint8_t splitAndProcessTextFile(const string &inputFile, const string &outputFile, int numThreads)
+{
+
     ifstream inFile(inputFile);
-    if (!inFile) {
+    if (!inFile)
+    {
         cerr << "Error opening input file: " << inputFile << endl;
         return -1;
     }
@@ -1393,12 +1455,14 @@ uint8_t splitAndProcessTextFile(const string& inputFile, const string& outputFil
     vector<thread> threads;
     vector<string> tempFiles;
 
-    for (int i = 0; i < numThreads; i++) {
+    for (int i = 0; i < numThreads; i++)
+    {
         streampos start = i * chunkSize;
         streampos end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize);
 
         // Adjust end position to the nearest newline
-        if (i != numThreads - 1) {
+        if (i != numThreads - 1)
+        {
             ifstream tempFile(inputFile);
             tempFile.seekg(end);
             string temp;
@@ -1412,33 +1476,35 @@ uint8_t splitAndProcessTextFile(const string& inputFile, const string& outputFil
         threads.emplace_back(Compression_Function, inputFile, start, end, chunkFile);
     }
 
-    for (auto& t : threads) {
+    for (auto &t : threads)
+    {
         t.join();
     }
 
     mergeBinaryFiles(tempFiles, outputFile);
     cout << "Encoding completed and merged into " << outputFile << endl;
-    
-    return 0;
-    
-}
 
+    return 0;
+}
 
 // **** codeWord (Binary) to Text File ****
 
-
 // Function to merge text files in order
-void mergeTextFiles(const vector<string>& tempFiles, const string& outputFile) {
+void mergeTextFiles(const vector<string> &tempFiles, const string &outputFile)
+{
     lock_guard<mutex> lock(fileMutex); // Lock before merging files
     ofstream outFile(outputFile);
-    if (!outFile) {
+    if (!outFile)
+    {
         cerr << "Error creating merged output file: " << outputFile << endl;
         return;
     }
 
-    for (const auto& tempFile : tempFiles) {
+    for (const auto &tempFile : tempFiles)
+    {
         ifstream inFile(tempFile);
-        if (!inFile) {
+        if (!inFile)
+        {
             cerr << "Error opening temp file: " << tempFile << endl;
             continue;
         }
@@ -1452,9 +1518,11 @@ void mergeTextFiles(const vector<string>& tempFiles, const string& outputFile) {
 }
 
 // Function to split a binary file into chunks and process them
-uint8_t splitAndProcessBinaryFile(const string& inputFile, const string& outputFile, int numThreads) {
+uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputFile, int numThreads)
+{
     ifstream inFile(inputFile, ios::binary);
-    if (!inFile) {
+    if (!inFile)
+    {
         cerr << "Error opening input file: " << inputFile << endl;
         return -1;
     }
@@ -1467,22 +1535,26 @@ uint8_t splitAndProcessBinaryFile(const string& inputFile, const string& outputF
     vector<string> tempFiles;
     streampos start, end;
 
-    for (int i = 0; i < numThreads; i++) {
-        if (i==0)
+    for (int i = 0; i < numThreads; i++)
+    {
+        if (i == 0)
             start = 0;
         else
             start = end;
-        
-        //end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize); // tmp - Abbas
-        end = (i == numThreads - 1) ? fileSize : streampos(i  * chunkSize);
+
+        // end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize); // tmp - Abbas
+        end = (i == numThreads - 1) ? fileSize : streampos(i * chunkSize);
 
         // Adjust end position to the nearest newline (0x02) boundary
-        if (i != numThreads - 1) {
+        if (i != numThreads - 1)
+        {
             ifstream tempFile(inputFile, ios::binary);
             tempFile.seekg(end);
             char c;
-            while (tempFile.get(c)) {
-                if (c == 0x02 || c == 0x00) break; // Stop at newline or space
+            while (tempFile.get(c))
+            {
+                if (c == 0x02 || c == 0x00)
+                    break; // Stop at newline or space
             }
             end = tempFile.tellg();
             tempFile.close();
@@ -1493,7 +1565,8 @@ uint8_t splitAndProcessBinaryFile(const string& inputFile, const string& outputF
         threads.emplace_back(Decompression_Function, inputFile, start, end, chunkFile);
     }
 
-    for (auto& t : threads) {
+    for (auto &t : threads)
+    {
         t.join();
     }
 
@@ -1504,9 +1577,11 @@ uint8_t splitAndProcessBinaryFile(const string& inputFile, const string& outputF
 }
 
 // Function to split a binary file into chunks and process them
-uint8_t splitAndProcessBinaryFileForSearch(const string& inputFile, const string& outputFile, int numThreads, string searchString) {
+uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string &outputFile, int numThreads, string searchString)
+{
     ifstream inFile(inputFile, ios::binary);
-    if (!inFile) {
+    if (!inFile)
+    {
         cerr << "Error opening input file: " << inputFile << endl;
         return -1;
     }
@@ -1516,42 +1591,65 @@ uint8_t splitAndProcessBinaryFileForSearch(const string& inputFile, const string
     streampos chunkSize = fileSize / numThreads;
 
     vector<thread> threads;
-    //vector<string> tempFiles;
+    // vector<string> tempFiles;
     streampos start, end;
 
-    for (int i = 0; i < numThreads; i++) {
-        if (i==0)
+    vector<uint32_t> countMatchVector(numThreads, 0);
+
+    for (int i = 0; i < numThreads; i++)
+    {
+        cout << "Initial value of count[" << i << "] = " << countMatchVector[i] << endl;
+    }
+
+    for (int i = 0; i < numThreads; i++)
+    {
+        if (i == 0)
             start = 0;
         else
             start = end;
-        
-        //end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize); // tmp - Abbas
-        end = (i == numThreads - 1) ? fileSize : streampos(i  * chunkSize);
+
+        // end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize); // tmp - Abbas
+        end = (i == numThreads - 1) ? fileSize : streampos(i * chunkSize);
 
         // Adjust end position to the nearest newline (0x02) boundary
-        if (i != numThreads - 1) {
+        if (i != numThreads - 1)
+        {
             ifstream tempFile(inputFile, ios::binary);
             tempFile.seekg(end);
             char c;
-            while (tempFile.get(c)) {
-                if (c == 0x02 || c == 0x00) break; // Stop at newline or space
+            while (tempFile.get(c))
+            {
+                if (c == 0x02 || c == 0x00)
+                    break; // Stop at newline or space
             }
             end = tempFile.tellg();
             tempFile.close();
         }
 
-        //string chunkFile = "chunk_" + to_string(i) + ".txt";
-        //tempFiles.push_back(chunkFile);
-        threads.emplace_back(Lookup_Function, inputFile, start, end, searchString);
+        // string chunkFile = "chunk_" + to_string(i) + ".txt";
+        // tempFiles.push_back(chunkFile);
+        threads.emplace_back(Lookup_Function, inputFile, start, end, searchString, i, ref(countMatchVector)); // 'i' is the threadIndex
+
+        // cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
     }
 
-    for (auto& t : threads) {
+    for (auto &t : threads)
+    {
         t.join();
     }
 
+    uint32_t sumAllMatch = 0;
+    for (int i = 0; i < numThreads; i++) // summation of all matched values from all threads
+    {
+        sumAllMatch += countMatchVector[i];
+        cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
+    }
+
+    cout << "Total matched values = " << sumAllMatch << endl;
+
     // Don't need to merge, we don't have an output file to generate
-    //mergeTextFiles(tempFiles, outputFile);
-    //cout << "Lookup completed and merged into " << outputFile << endl;
+    // mergeTextFiles(tempFiles, outputFile);
+    // cout << "Lookup completed and merged into " << outputFile << endl;
     cout << "Lookup operation has been completed." << endl;
 
     return 0;

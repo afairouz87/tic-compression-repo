@@ -9,7 +9,9 @@
         "__locale": "cpp",
         "ios": "cpp",
         "istream": "cpp",
-        "stdexcept": "cpp"
+        "stdexcept": "cpp",
+        "fstream": "cpp",
+        "locale": "cpp"
     },
 
     "editor.fontSize": 12,
