@@ -31,12 +31,14 @@ the reserved codeWords (space, newline, nextCapital).
 */ 
 #define CODE_WORD_OFFSET 4    // number of reserved code-words
 
+// These reserved code-words nedds to be shifted to the left by 1, and insert a zero.
 #define SPACE_CODE 0x0        // represent a space
 #define NEW_LINE_CODE 0x1     // represent a newline 
 #define NEXT_CAPITAL_CODE 0x2 // represent an uppercase letter of the first character of the next word
 #define NEXT_SPECIAL_CODE 0x3 // represent a special code word in the next bytes of the encoded file
 // *******************************
 
+// Pre-calculated offset for each code-word type (T0, T1, T2, ...)
 #define TWO_BYTE_OFFSET 128 // = pow(2,7)
 #define THREE_BYTE_OFFSET 16512 // = ( pow(2,7) + pow(2,14) )
 #define FOUR_BYTE_OFFSET 2113664 // = ( pow(2,7) + pow(2,14) + pow(2,21) )
@@ -68,8 +70,13 @@ uint32_t Shift_Right_Seven_Positions(uint32_t number);
 
 uint8_t Compression_Function(const string& inputFile, streampos start, streampos end, const string& outputFile);
 uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameText);
-uint32_t Lookup_Function(const string& inputFileNameBin, streampos start, streampos end, string searchString, int threadIndex, vector<uint32_t>& results);
-uint8_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameBin);
+
+uint32_t Lookup_Function(const string& inputFileNameBin, streampos start, streampos end, 
+    string searchString, int threadIndex, vector<uint32_t>& results);
+
+uint32_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, 
+    const string& outputFileNameBin, string searchString, string replaceString, int threadIndex, vector<uint32_t>& results);
+
 
 // Reading a plain text file functions
 uint8_t processFile(const string &filePath);
@@ -98,6 +105,10 @@ uint8_t splitAndProcessBinaryFile(const string& inputFile, const string& outputF
 
 // ** Lookup **
 uint8_t splitAndProcessBinaryFileForSearch(const string& inputFile, const string& outputFile, int numThreads, string searchString);
+
+// ** Lookup and Replace **
+uint8_t splitAndProcessBinaryFileForSearchAndReplace(const string &inputFile, const string &outputFile, int numThreads, string searchString, string replaceString);
+
 
 //********************************** 
 

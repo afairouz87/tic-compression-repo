@@ -5,7 +5,7 @@ Author: Abbas A. Fairouz
 Version: 3.1
 Note: multi-threaded version
 Created: Apr. 8, 2025
-Updated: Apr. 10, 2025
+Updated: Apr. 19, 2025
 
 Description:
 * In this version:
@@ -113,6 +113,15 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    if(string(argv[2]) == "-l" && argc != 7)
+    {
+        cerr << "For -l flag, you need to add the search string.\n";
+    }
+    if(string(argv[2]) == "-r" && argc != 8)
+    {
+        cerr << "For -r flag, you need to add the search string and the replace string.\n";
+    }
+
     string inputFileName = argv[1];
     string operationMode = argv[2];
     string outputFileName = argv[5];
@@ -152,8 +161,8 @@ int main(int argc, char *argv[])
     // cout << "Two byte mid = " << TWO_BYTE_MID << "bits = " << bitset<14> (TWO_BYTE_MID) << endl;
     // ****************
 
-    if (operationMode == "-c")
-    { // compression operation flag
+    if (operationMode == "-c") // compression operation flag
+    { 
         // *** Compression ***
         // Building the dictionary hash table for compression
         cout << "Building the dictionary hash table for compression.." << endl;
@@ -168,8 +177,8 @@ int main(int argc, char *argv[])
         else
             cout << "Error in running the compression function!" << endl;
     } // compression operation flag
-    else if (operationMode == "-d")
-    { // decompression operation flag
+    else if (operationMode == "-d") // decompression operation flag
+    { 
         // *** Decompression ***
         // Building the dictionary hash table for decompression
         cout << "Building the dictionary hash table for decompression.." << endl;
@@ -183,8 +192,8 @@ int main(int argc, char *argv[])
         else
             cout << "Error in running the decompression function!" << endl;
     } // decompression operation flag
-    else if (operationMode == "-l")
-    { // lookup operation flag
+    else if (operationMode == "-l") // lookup operation flag
+    { 
         // Building the dictionary hash table for compressing the search string
         cout << "Building the dictionary hash table for compression.." << endl;
         if (Build_Dictionary_Table_Compression() == 0)
@@ -197,8 +206,19 @@ int main(int argc, char *argv[])
         else
             cout << "Error in running the lookup function!" << endl;
     } // lookup operation flag
-    else if (operationMode == "-r")
-    { // lookup and replace operation flag
+    else if (operationMode == "-r") // lookup and replace operation flag
+    { 
+        // Building the dictionary hash table for compressing the search string
+        cout << "Building the dictionary hash table for compression.." << endl;
+        if (Build_Dictionary_Table_Compression() == 0)
+            cout << "The dictionary hash table for compression has been built successfully." << endl;
+        else
+            cout << "Error in building the dictionary hash table!" << endl;
+
+        if (splitAndProcessBinaryFileForSearchAndReplace(inputFileName, outputFileName, numThreads, searchString, replaceString) == 0)
+            cout << "The lookup function is successful." << endl;
+        else
+            cout << "Error in running the lookup function!" << endl;
 
     } // lookup and replace operation flag
     else
@@ -244,6 +264,177 @@ Then, lookup and match byte-by-byte.
 If there is a match, increment a counter.
 - Return the value of the counter.
 */
+
+uint32_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, 
+    const string& outputFileNameBin, string searchString, string replaceString, int threadIndex, vector<uint32_t>& results)
+{
+
+    // Compress the searchString text to code-words
+    vector<string> tokens, replaceTokens;
+    vector<uint8_t> lineCodeWords, replaceCodeWords;
+    uint16_t lineCodeWordsSize, replaceCodeWordsSize;   
+
+    // Process the searchString
+    tokens = processLineChar(searchString);                // Process the line
+    lineCodeWords = convertSearchStringToCodeWord(tokens); // Generate the code words for the search string
+    lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
+    uint16_t byteIndex = 0; // index of the searchString byteCode
+
+    // Process the searchString
+    replaceTokens = processLineChar(replaceString);                // Process the line
+    replaceCodeWords = convertSearchStringToCodeWord(replaceTokens); // Generate the code words for the search string
+    replaceCodeWordsSize = static_cast<uint16_t>(replaceCodeWords.size());
+
+    // -- for debug --
+    cout << "Code-word size: " << lineCodeWordsSize << endl;
+
+    // Compare the searchString code-words over the compressed file
+    uint8_t tmpSerial = 0;
+
+    // Open the file in binary mode
+    ifstream inFile(inputFileNameBin, ios::binary | ios::app);
+    if (!inFile)
+    {
+        cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
+        return -1;
+    }
+
+    // Set the file pointer to the start of this thread's chunk
+    inFile.seekg(start); // Move file pointer to start position
+
+     // For output file
+     const char *buffer;
+     size_t bufferSize;
+
+    ofstream outFile(outputFileNameBin, ios::app); // Open in append mode
+    if (!outFile)
+    {
+        cerr << "Error: Could not open file " << outputFileNameText << " for appending." << endl;
+        return -1;
+    }
+
+    // Lock before writing to the output file
+    //lock_guard<mutex> lock(fileMutex);
+    uint32_t matchCount = 0;
+    uint32_t byteCount = 0;
+    uint32_t toSkip = 0;
+
+
+    char byte;
+    size_t byteSize = sizeof(byte);
+    cout << "Reading file byte by byte:" << endl;
+
+    vector<uint8_t> tmpCodeWord;
+
+    // Read the file byte by byte
+    // while (inFile.read(&byte, 1)) {
+    while (inFile.peek() != EOF && inFile.tellg() < end) // peek() -> checks the next character without advancing the file pointer.
+    {                     
+        inFile.get(byte); // reads the next byte
+
+        // -- for debug -- 
+        byteCount++;
+
+        tmpSerial = static_cast<uint8_t>(byte);
+
+        // Handle special code-word, and if it is not matching the searchString
+        if(tmpSerial == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && tmpSerial != lineCodeWords[byteIndex])
+        {
+            
+            outFile.write(reinterpret_cast<const char*>(&byte), sizeof(byte)); // write the NEXT_SPECIAL_CODE
+
+            inFile.get(byte); // read the number of ASCII character in the special code-word to skip them
+            toSkip = static_cast<uint32_t>(byte); // cast the read byte to uint32_t
+            outFile.write(reinterpret_cast<const char*>(&byte), sizeof(byte)); // write the number of ASCII character in the special code-word
+            
+            //inFile.ignore(toSkip); // skip all ASCII characters (bytes) in the special code-word
+            for(int i=0; i<toSkip; i++)
+            {
+                inFile.get(byte); // read the ASCII character of the special code-word
+                outFile.write(reinterpret_cast<const char*>(&byte), sizeof(byte)); // write the ASCII character of the special code-word
+            }
+
+            // // -- for debug -- 
+            // byteCount += toSkip + 1;
+            // cout << "Skipped Special Code, at byteCount = " << byteCount << endl;
+
+            byteIndex = 0;
+        }
+        else
+        {
+            if (tmpSerial == lineCodeWords[byteIndex]) // check the searchString byte with the corresponding byte in the compressed file
+            {
+                byteIndex++;
+
+                // // -- for debug --
+                // cout << "Partial match, byteCount = " << byteCount << endl;
+
+                if (byteIndex == lineCodeWordsSize) // reset byteIndex if it exeeds the size of the searchString byteCode
+                {
+                    byteIndex = 0;
+                    matchCount++;
+                    
+                    // // -- for debug --
+                    // cout << "Match in byteCount = " << byteCount << endl;
+                    // cout << "The byte value in the file is: " << static_cast<uint32_t>(tmpSerial) << endl;
+
+                    buffer = reinterpret_cast<const char *>(replaceCodeWords.data());
+                    bufferSize = replaceCodeWords.size();
+                    outFile.write(buffer, bufferSize);
+                }
+
+                
+            }
+            else if(byteIndex != 0)
+            {
+                tmpCodeWord.push_back(byte);
+
+                buffer = reinterpret_cast<const char *>(tmpCodeWord.data());
+                bufferSize = tmpCodeWord.size();
+                outFile.write(buffer, bufferSize);
+
+                byteIndex = 0;
+                tmpCodeWord.clear();
+            }
+            else
+            {
+                byteIndex = 0;
+                tmpCodeWord.clear();
+
+                outFile.write(reinterpret_cast<const char*>(&byte), sizeof(byte)); // write the unmatched code-word
+            }
+
+            
+        }
+
+        if (inFile.tellg() >= end)
+        {
+            break; // break after its own part of the binary file
+        }
+
+    } // while loop: read byte-by-byte
+
+    if (inFile.eof())
+    {
+        cout << "End of file reached." << endl;
+    }
+    else if (inFile.fail())
+    {
+        cerr << "Error: Failed to read the file." << endl;
+    }
+
+    cout << "byteCount reached = " << byteCount << endl;
+    inFile.close();
+
+    results[threadIndex] = matchCount; // return the matched values found in the compressed file
+
+    // // -- for debug --
+    // cout << "Lookup Function: Match count = " << matchCount << endl;
+
+    return 0;
+}
+
+
 uint32_t Lookup_Function(
     const string &inputFileNameBin,
     streampos start,
@@ -268,7 +459,7 @@ uint32_t Lookup_Function(
     cout << "Code-word size: " << lineCodeWordsSize << endl;
 
     // Compare the searchString code-words over the compressed file
-    uint32_t tmpSerial = 0;
+    uint8_t tmpSerial = 0;
 
     // Open the file in binary mode
     ifstream inFile(inputFileNameBin, ios::binary);
@@ -282,7 +473,7 @@ uint32_t Lookup_Function(
     inFile.seekg(start); // Move file pointer to start position
 
     // Lock before writing to the output file
-    lock_guard<mutex> lock(fileMutex);
+    //lock_guard<mutex> lock(fileMutex);
     uint32_t matchCount = 0;
     uint32_t byteCount = 0;
     uint32_t toSkip = 0;
@@ -302,25 +493,27 @@ uint32_t Lookup_Function(
 
         tmpSerial = static_cast<uint8_t>(byte);
 
-        if((tmpSerial >> 1) == NEXT_SPECIAL_CODE && tmpSerial != lineCodeWords[byteIndex])
+        if(tmpSerial == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && tmpSerial != lineCodeWords[byteIndex])
         //if((tmpSerial >> 1) == NEXT_SPECIAL_CODE)
         {
-            inFile.get(byte);
-            toSkip = static_cast<uint32_t>(byte);
-            inFile.ignore(toSkip);
+            inFile.get(byte); // read the number of ASCII character in the special code-word to skip them
+            toSkip = static_cast<uint32_t>(byte); // cast the read byte to uint32_t
+            inFile.ignore(toSkip); // skip all ASCII characters (bytes) in the special code-word
 
-            // -- for debug -- 
-            byteCount += toSkip + 1;
+            // // -- for debug -- 
+            // byteCount += toSkip + 1;
+            // cout << "Skipped Special Code, at byteCount = " << byteCount << endl;
 
             byteIndex = 0;
-
-            //cout << toSkip << ""
         }
         else
         {
             if (tmpSerial == lineCodeWords[byteIndex]) // check the searchString byte with the corresponding byte in the compressed file
             {
                 byteIndex++;
+
+                // // -- for debug --
+                // cout << "Partial match, byteCount = " << byteCount << endl;
             }
             else
             {
@@ -332,9 +525,9 @@ uint32_t Lookup_Function(
                 byteIndex = 0;
                 matchCount++;
                 
-                // -- for debug --
-                //cout << "Match in byteCount = " << byteCount << endl;
-                //cout << "The byte value in the file is: " << static_cast<int>(tmpSerial) << endl;
+                // // -- for debug --
+                // cout << "Match in byteCount = " << byteCount << endl;
+                // cout << "The byte value in the file is: " << static_cast<uint32_t>(tmpSerial) << endl;
             }
         }
 
@@ -358,6 +551,9 @@ uint32_t Lookup_Function(
     inFile.close();
 
     results[threadIndex] = matchCount; // return the matched values found in the compressed file
+
+    // // -- for debug --
+    // cout << "Lookup Function: Match count = " << matchCount << endl;
 
     return 0;
 }
@@ -1650,6 +1846,92 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
     // Don't need to merge, we don't have an output file to generate
     // mergeTextFiles(tempFiles, outputFile);
     // cout << "Lookup completed and merged into " << outputFile << endl;
+    cout << "Lookup operation has been completed." << endl;
+
+    return 0;
+}
+
+
+// Function to split a binary file into chunks and process them
+uint8_t splitAndProcessBinaryFileForSearchAndReplace(
+    const string &inputFile, 
+    const string &outputFile, 
+    int numThreads, 
+    string searchString, 
+    string replaceString
+)
+{
+    ifstream inFile(inputFile, ios::binary);
+    if (!inFile)
+    {
+        cerr << "Error opening input file: " << inputFile << endl;
+        return -1;
+    }
+
+    inFile.seekg(0, ios::end);
+    streampos fileSize = inFile.tellg();
+    streampos chunkSize = fileSize / numThreads;
+
+    vector<thread> threads;
+    vector<string> tempFiles;
+    streampos start, end;
+
+    vector<uint32_t> countMatchVector(numThreads, 0);
+
+    for (int i = 0; i < numThreads; i++)
+    {
+        cout << "Initial value of count[" << i << "] = " << countMatchVector[i] << endl;
+    }
+
+    for (int i = 0; i < numThreads; i++)
+    {
+        if (i == 0)
+            start = 0;
+        else
+            start = end;
+
+        // end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize); // tmp - Abbas
+        end = (i == numThreads - 1) ? fileSize : streampos(i * chunkSize);
+
+        // Adjust end position to the nearest newline (0x02) boundary
+        if (i != numThreads - 1)
+        {
+            ifstream tempFile(inputFile, ios::binary);
+            tempFile.seekg(end);
+            char c;
+            while (tempFile.get(c))
+            {
+                if (c == 0x02 || c == 0x00)
+                    break; // Stop at newline or space
+            }
+            end = tempFile.tellg();
+            tempFile.close();
+        }
+
+        string chunkFile = "chunk_" + to_string(i) + ".bin";
+        tempFiles.push_back(chunkFile);
+        threads.emplace_back(Lookup_and_Replace_Function, inputFile, start, end, chunkFile, searchString, replaceString, i, ref(countMatchVector)); // 'i' is the threadIndex
+
+        // cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
+    }
+
+    for (auto &t : threads)
+    {
+        t.join();
+    }
+
+    uint32_t sumAllMatch = 0;
+    for (int i = 0; i < numThreads; i++) // summation of all matched values from all threads
+    {
+        sumAllMatch += countMatchVector[i];
+        cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
+    }
+
+    cout << "Total matched values = " << sumAllMatch << endl;
+
+    // Don't need to merge, we don't have an output file to generate
+    mergeTextFiles(tempFiles, outputFile);
+    cout << "Lookup completed and merged into " << outputFile << endl;
     cout << "Lookup operation has been completed." << endl;
 
     return 0;
