@@ -74,9 +74,11 @@ uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, 
 uint32_t Lookup_Function(const string& inputFileNameBin, streampos start, streampos end, 
     string searchString, int threadIndex, vector<uint32_t>& results);
 
-uint32_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, 
-    const string& outputFileNameBin, string searchString, string replaceString, int threadIndex, vector<uint32_t>& results);
+// uint32_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, 
+//     const string& outputFileNameBin, string searchString, string replaceString, int threadIndex, vector<uint32_t>& results);
 
+uint32_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, 
+        const string& outputFileNameBin, string searchString, string replaceString, int threadIndex, vector<uint32_t>& results, char preservedDelimiter);
 
 // Reading a plain text file functions
 uint8_t processFile(const string &filePath);
@@ -109,6 +111,8 @@ uint8_t splitAndProcessBinaryFileForSearch(const string& inputFile, const string
 // ** Lookup and Replace **
 uint8_t splitAndProcessBinaryFileForSearchAndReplace(const string &inputFile, const string &outputFile, int numThreads, string searchString, string replaceString);
 
+// Version 2
+//uint8_t splitAndProcessBinaryFileWithReplacement(const string &inputFile, const string &outputFile, int numThreads, const string &searchString, const string &replaceString);
 
 //********************************** 
 
