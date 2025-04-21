@@ -265,7 +265,8 @@ I need to copy the logic from the "Lookup_Function"
 
 */
 
-
+// ------------------------------------------------------
+// ***** Lookup_and_Replace_Function ***********
 
 // // // Version 3
 uint32_t Lookup_and_Replace_Function(
@@ -551,6 +552,114 @@ uint32_t Lookup_and_Replace_Function(
 // }
 
 
+
+// // Version 4
+// uint32_t Lookup_Function(
+//     const string &inputFileNameBin,
+//     streampos start,
+//     streampos end,
+//     string searchString,
+//     int threadIndex,
+//     vector<uint32_t> &results)
+// {
+//     ifstream inFile(inputFileNameBin, ios::binary);
+//     if (!inFile)
+//     {
+//         cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
+//         return -1;
+//     }
+
+//     inFile.seekg(start);
+//     const size_t bufferSize = 4096;
+//     char buffer[bufferSize];
+//     streamoff currentPos = static_cast<streamoff>(start);
+
+//     uint32_t matchCount = 0;
+//     uint16_t byteIndex = 0;
+//     vector<string> tokens = processLineChar(searchString);
+//     vector<uint8_t> lineCodeWords = convertSearchStringToCodeWord(tokens);
+//     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
+
+//     uint8_t tmpSerial = 0;
+//     uint32_t toSkip = 0;
+
+//     while (currentPos < end && inFile)
+//     {
+//         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
+//         inFile.read(buffer, bytesToRead);
+//         size_t bytesRead = inFile.gcount();
+
+//         // --- Abbas ---
+        
+//         if(bytesToRead == bufferSize){
+//             //for(int i = bufferSize-1; i >= 0; i--)
+//             for(int i=bytesToRead-1; i>=0; i--)
+//             {
+//                 if( buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
+//                 {
+//                     bytesRead = i+1;
+//                     break;
+//                 }
+//             }
+//         }
+
+//         // -------------
+
+//         for (size_t i = 0; (i < bytesRead) && (currentPos < end); ++i, ++currentPos)
+//         {
+//             tmpSerial = static_cast<uint8_t>(buffer[i]);
+
+//             if (tmpSerial == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && tmpSerial != lineCodeWords[byteIndex])
+//             {
+//                 if (i + 1 < bytesRead)
+//                 {
+//                     toSkip = static_cast<uint8_t>(buffer[i + 1]);
+//                     i += toSkip + 1;
+//                     currentPos += toSkip + 1;
+//                     byteIndex = 0;
+//                 }
+//                 else
+//                 {
+//                     inFile.read(buffer, 1);
+//                     toSkip = static_cast<uint8_t>(buffer[0]);
+//                     inFile.ignore(toSkip);
+//                     currentPos = inFile.tellg();
+//                     byteIndex = 0;
+//                     break;
+//                 }
+//             }
+//             else
+//             {
+//                 if (tmpSerial == lineCodeWords[byteIndex])
+//                 {
+//                     byteIndex++;
+//                 }
+//                 else
+//                 {
+//                     byteIndex = 0;
+//                 }
+
+//                 if (byteIndex == lineCodeWordsSize)
+//                 {
+//                     byteIndex = 0;
+//                     matchCount++;
+
+//                     // -- for debug --
+//                     cout << "Match found in byte number = " << << endl;
+//                 }
+//             }
+//         }
+//     }
+
+//     inFile.close();
+//     results[threadIndex] = matchCount;
+//     return 0;
+// }
+
+// ------------------------------------------------------
+// ***** Lookup_Function ***********
+
+
 // Version 3
 uint32_t Lookup_Function(
     const string &inputFileNameBin,
@@ -590,6 +699,7 @@ uint32_t Lookup_Function(
         for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
         {
             tmpSerial = static_cast<uint8_t>(buffer[i]);
+            uint16_t nextByteCode = tmpSerial % 2;
 
             if (tmpSerial == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && tmpSerial != lineCodeWords[byteIndex])
             {
@@ -616,11 +726,22 @@ uint32_t Lookup_Function(
                 {
                     byteIndex++;
                 }
-                else
+                // else
+                // {
+                //     byteIndex = 0;
+                // }
+                else if(nextByteCode == 1)
                 {
+                    // toSkip = static_cast<uint8_t>(buffer[i + 1]);
+                    // i += toSkip + 1;
+                    // currentPos += toSkip + 1;
+                    do{
+                        i++; currentPos++; // skip he next byte of the code-word chain
+                        nextByteCode = static_cast<uint16_t>(buffer[i]) % 2;
+                    } while(nextByteCode==1);
+                    
                     byteIndex = 0;
                 }
-
                 if (byteIndex == lineCodeWordsSize)
                 {
                     byteIndex = 0;
@@ -636,7 +757,7 @@ uint32_t Lookup_Function(
 }
 
 
-// Version 1 (original, but slow)
+// // Version 1 (original, but slow)
 // uint32_t Lookup_Function(
 //     const string &inputFileNameBin,
 //     streampos start,
@@ -658,7 +779,11 @@ uint32_t Lookup_Function(
 //     uint16_t byteIndex = 0; // index of the searchString byteCode
 
 //     // -- for debug --
-//     //cout << "Code-word size: " << lineCodeWordsSize << endl;
+//     cout << "Code-word size: " << lineCodeWordsSize << endl;
+//     cout << "Code-word is: ";
+//     for(int i=0; i<lineCodeWordsSize; i++)
+//         cout << static_cast<uint16_t>(lineCodeWords[i]) << " ";
+//     cout << endl;
 
 //     // Compare the searchString code-words over the compressed file
 //     uint8_t tmpSerial = 0;
@@ -702,9 +827,9 @@ uint32_t Lookup_Function(
 //             toSkip = static_cast<uint32_t>(byte); // cast the read byte to uint32_t
 //             inFile.ignore(toSkip); // skip all ASCII characters (bytes) in the special code-word
 
-//             // // -- for debug -- 
-//             // byteCount += toSkip + 1;
-//             // cout << "Skipped Special Code, at byteCount = " << byteCount << endl;
+//             // -- for debug -- 
+//             byteCount += toSkip + 1;
+//             cout << "Skipped Special Code, at byteCount = " << byteCount << endl;
 
 //             byteIndex = 0;
 //         }
@@ -714,22 +839,31 @@ uint32_t Lookup_Function(
 //             {
 //                 byteIndex++;
 
-//                 // // -- for debug --
-//                 // cout << "Partial match, byteCount = " << byteCount << endl;
+//                 // -- for debug --
+//                 cout << "Partial match, byteCount = " << byteCount << endl;
+//                 cout << "byteIndex = " << byteIndex << endl;
 //             }
-//             else
+//             else if(tmpSerial%2 == 1)
 //             {
+//                 uint16_t nextByteCode = 1;
+//                 while(nextByteCode==1)
+//                 {
+//                     inFile.get(byte); // skip the next byte in the code-word chain
+//                     nextByteCode = static_cast<uint16_t>(byte) % 2;
+//                 }
 //                 byteIndex = 0;
 //             }
 
 //             if (byteIndex == lineCodeWordsSize) // reset byteIndex if it exeeds the size of the searchString byteCode
 //             {
+//                 cout << "byteIndex = " << byteIndex << ", lineCodeWordsSize = " << lineCodeWordsSize << endl;
+
 //                 byteIndex = 0;
 //                 matchCount++;
                 
-//                 // // -- for debug --
-//                 // cout << "Match in byteCount = " << byteCount << endl;
-//                 // cout << "The byte value in the file is: " << static_cast<uint32_t>(tmpSerial) << endl;
+//                 // -- for debug --
+//                 cout << "Match in byteCount = " << byteCount << endl;
+//                 cout << "The byte value in the file is: " << static_cast<uint32_t>(tmpSerial) << endl;
 //             }
 //         }
 
@@ -759,6 +893,9 @@ uint32_t Lookup_Function(
 
 //     return 0;
 // }
+
+
+// ----------------------------------------
 
 // *** Consecutive Array for Decompression ***
 uint8_t Build_Dictionary_Table_Decompression()

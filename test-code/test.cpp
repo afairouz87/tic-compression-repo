@@ -55,71 +55,98 @@ unordered_map<string, uint32_t> hashMap; // Compression Hash Table
 
 int main() {
 
-    size_t lineCount = countLinesInFile(filePath);
-    cout << "Number of lines in the file: " << lineCount << endl;
+    // To do ...
+    // Test backward steps in a buffer ...
+    const size_t bufferSize = 6;
+    char buffer[bufferSize] = {2, 3, 4, 5, 0, 8};
+    size_t bytesToRead = 6;
 
-    hashMap["test1"] = 1;
-    hashMap["test2"] = 2;
-    hashMap["test3"] = 3;
+    cout << "Start buffer read test..\n";
 
-    string lookup_String = "helloThere";
-
-    cout << "hash map [test2] = " << hashMap["test2"] << endl;
-    cout << "hash map [" << lookup_String << "] = " << hashMap[lookup_String] << endl;
-    cout << "String[3] = " << lookup_String[3] << endl;
-
-    // Test the special code generator function
-    string inString1 = "Test";
-    vector<uint8_t> byteCode = SPECIAL_CODE_WORD_GENERATOR_PIC(inString1);
-    cout << "\nInput Special String: " << inString1 << endl;
-    cout << "\nEncoded byteCodes:\n";
-    for (size_t i=0; i < byteCode.size(); i++)
-        cout << hex << static_cast<int>(byteCode[i]) << endl;
-
-    string outString1 = SPECIAL_CODE_WORD_READER_PIC(byteCode);
-    cout << "\nDecode the byteCodes..\n";
-    // for debug ...
-    for(int i=0; i<outString1.size(); i++){
-        char c = outString1[i];
-        cout << c << endl;
-    }
-    cout << "Decoded String: " << outString1 << endl;
-
-    cout << endl;
-
-    // Testing multithreading by opening the files using multiple file pointers.
-    size_t chunkSize;
-
-    // Split the file into multiple file streams
-    vector<ifstream*> fileStreams = splitFileIntoThreads(filePath, chunkSize);
-
-    if (fileStreams.empty()) {
-        cerr << "Error: File splitting failed!" << endl;
-        return 1;
-    }
-
-    // Create threads to process each chunk in parallel
-    vector<thread> threads;
-    for (size_t i = 0; i < fileStreams.size(); ++i) {
-        threads.emplace_back(processChunk, fileStreams[i], chunkSize, i);
-    }
-
-    // Join all threads
-    for (auto &t : threads) {
-        t.join();
-    }
-
-    // Clean up file streams
-    for (auto &fs : fileStreams) {
-        if (fs) {
-            fs->close();
-            delete fs;
+    for(int i = bufferSize-1; i >= 0; i--)
+    {
+        if(buffer[i]==0)
+        {
+            bytesToRead = i;
+            break;
         }
     }
 
-
+    cout << "bytesToRead = " << bytesToRead << endl;
 
     return 0;
+    
+    
+    
+    
+    
+    
+    
+    // size_t lineCount = countLinesInFile(filePath);
+    // cout << "Number of lines in the file: " << lineCount << endl;
+
+    // hashMap["test1"] = 1;
+    // hashMap["test2"] = 2;
+    // hashMap["test3"] = 3;
+
+    // string lookup_String = "helloThere";
+
+    // cout << "hash map [test2] = " << hashMap["test2"] << endl;
+    // cout << "hash map [" << lookup_String << "] = " << hashMap[lookup_String] << endl;
+    // cout << "String[3] = " << lookup_String[3] << endl;
+
+    // // Test the special code generator function
+    // string inString1 = "Test";
+    // vector<uint8_t> byteCode = SPECIAL_CODE_WORD_GENERATOR_PIC(inString1);
+    // cout << "\nInput Special String: " << inString1 << endl;
+    // cout << "\nEncoded byteCodes:\n";
+    // for (size_t i=0; i < byteCode.size(); i++)
+    //     cout << hex << static_cast<int>(byteCode[i]) << endl;
+
+    // string outString1 = SPECIAL_CODE_WORD_READER_PIC(byteCode);
+    // cout << "\nDecode the byteCodes..\n";
+    // // for debug ...
+    // for(int i=0; i<outString1.size(); i++){
+    //     char c = outString1[i];
+    //     cout << c << endl;
+    // }
+    // cout << "Decoded String: " << outString1 << endl;
+
+    // cout << endl;
+
+    // // Testing multithreading by opening the files using multiple file pointers.
+    // size_t chunkSize;
+
+    // // Split the file into multiple file streams
+    // vector<ifstream*> fileStreams = splitFileIntoThreads(filePath, chunkSize);
+
+    // if (fileStreams.empty()) {
+    //     cerr << "Error: File splitting failed!" << endl;
+    //     return 1;
+    // }
+
+    // // Create threads to process each chunk in parallel
+    // vector<thread> threads;
+    // for (size_t i = 0; i < fileStreams.size(); ++i) {
+    //     threads.emplace_back(processChunk, fileStreams[i], chunkSize, i);
+    // }
+
+    // // Join all threads
+    // for (auto &t : threads) {
+    //     t.join();
+    // }
+
+    // // Clean up file streams
+    // for (auto &fs : fileStreams) {
+    //     if (fs) {
+    //         fs->close();
+    //         delete fs;
+    //     }
+    // }
+
+
+
+    // return 0;
 
 
 
