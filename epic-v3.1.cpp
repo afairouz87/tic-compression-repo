@@ -271,7 +271,7 @@ We still have an issue with this function1!!!
 // ------------------------------------------------------
 // ***** Lookup_and_Replace_Function ***********
 
-// // // Version 3
+// Version 4 (Stable)
 uint32_t Lookup_and_Replace_Function(
     const string &inputFileNameBin,
     streampos start,
@@ -280,14 +280,13 @@ uint32_t Lookup_and_Replace_Function(
     string searchString,
     string replaceString,
     int threadIndex,
-    vector<uint32_t> &results,
-    char preservedDelimiter)
+    vector<uint32_t> &results)
 {
     ifstream inFile(inputFileNameBin, ios::binary);
     ofstream outFile(outputFileNameBin, ios::binary | ios::app);
     if (!inFile || !outFile)
     {
-        cerr << "Error opening files in thread " << threadIndex << endl;
+        cerr << "Error: Could not open file(s) in thread " << threadIndex << endl;
         return -1;
     }
 
@@ -306,30 +305,32 @@ uint32_t Lookup_and_Replace_Function(
 
     uint8_t byte = 0;
     uint32_t toSkip = 0;
-    uint16_t nextByteCode;
 
-    
-    while (start + currentPos < end && inFile)
+    while (currentPos < end && inFile)
     {
         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
         inFile.read(buffer, bytesToRead);
         size_t bytesRead = inFile.gcount();
 
-        // --- Abbas ---
-        
-        if(bytesToRead == bufferSize){
-            //for(int i = bufferSize-1; i >= 0; i--)
-            for(int i=bytesToRead-1; i>=0; i--)
+        if (bytesRead == bufferSize)
+        {
+            size_t safeEnd = bufferSize;
+            for (int i = bufferSize - 1; i >= 0; --i)
             {
-                if( buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
+                if (buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
                 {
-                    bytesRead = i+1;
+                    safeEnd = i;
                     break;
                 }
             }
+            size_t unreadBytes = bytesRead - safeEnd;
+            if (unreadBytes > 0)
+            {
+                inFile.clear();
+                inFile.seekg(-static_cast<streamoff>(unreadBytes), ios::cur);
+                bytesRead = safeEnd;
+            }
         }
-
-        // -------------
 
         for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
         {
@@ -338,32 +339,28 @@ uint32_t Lookup_and_Replace_Function(
 
             if (byte == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && byte != lineCodeWords[byteIndex])
             {
-                // Add NEXT_SPECIAL_CODE byte
-                outFile.put(static_cast<char>(byte)); // write the NEXT_SPECIAL_CODE to the output file 
-                i++; currentPos++;
-                
-                // Number of ASCII Characters byte 
-                uint8_t skipLength = static_cast<uint8_t>(buffer[i]); // calculate the number of ASCII character in the special code-word
-                outFile.put(static_cast<char>(skipLength)); // write the number of ASCII character in the special code-word to the output file
-                i++; currentPos++;
-
-                // Add the ASCII characters as bytes
-                outFile.write(reinterpret_cast<const char*>(&buffer[i]), skipLength);
-                i += skipLength;
-                currentPos += skipLength;
-                
-                byteIndex = 0;
+                if (i + 1 < bytesRead)
+                {
+                    outFile.put(static_cast<char>(byte));
+                    uint8_t skipLength = static_cast<uint8_t>(buffer[i + 1]);
+                    outFile.put(static_cast<char>(skipLength));
+                    i += 2;
+                    currentPos += 2;
+                    outFile.write(&buffer[i], skipLength);
+                    i += skipLength - 1;
+                    currentPos += skipLength;
+                    byteIndex = 0;
+                }
             }
             else
             {
                 if (byte == lineCodeWords[byteIndex])
                 {
                     tmpCodeWord.push_back(byte);
-                    //i++; currentPos++;
                     byteIndex++;
                     if (byteIndex == lineCodeWordsSize)
                     {
-                        outFile.write(reinterpret_cast<const char*>(replaceCodeWords.data()), replaceCodeWords.size());
+                        outFile.write(reinterpret_cast<const char *>(replaceCodeWords.data()), replaceCodeWords.size());
                         matchCount++;
                         byteIndex = 0;
                         tmpCodeWord.clear();
@@ -371,38 +368,163 @@ uint32_t Lookup_and_Replace_Function(
                 }
                 else
                 {
-                    while(nextByteCode==1){
-                        //outFile.put(static_cast<char>(byte));
+                    while (nextByteCode == 1 && i + 1 < bytesRead)
+                    {
                         tmpCodeWord.push_back(byte);
                         i++; currentPos++;
-                        nextByteCode = static_cast<uint16_t>(buffer[i]) % 2;
+                        byte = static_cast<uint8_t>(buffer[i]);
+                        nextByteCode = byte % 2;
                     }
-
                     tmpCodeWord.push_back(byte);
-                    //i++; currentPos++;
-
-                    outFile.write(reinterpret_cast<const char*>(tmpCodeWord.data()), tmpCodeWord.size());
-                    //uint8_t skipLength = static_cast<uint8_t>(tmpCodeWord.size()) - 1; 
+                    outFile.write(reinterpret_cast<const char *>(tmpCodeWord.data()), tmpCodeWord.size());
                     tmpCodeWord.clear();
-                    
                     byteIndex = 0;
-                }                
+                }
             }
         }
     }
 
-    // Write preserved delimiter only if this is not already present as the last byte
-    if (!outFile.fail() && preservedDelimiter != 0)
-    {
-        // outFile.put(preservedDelimiter); // tmp commented - Abbas
-    }
-
     inFile.close();
     outFile.close();
-
     results[threadIndex] = matchCount;
     return 0;
 }
+
+
+
+
+
+// // Version 3
+// uint32_t Lookup_and_Replace_Function(
+//     const string &inputFileNameBin,
+//     streampos start,
+//     streampos end,
+//     const string &outputFileNameBin,
+//     string searchString,
+//     string replaceString,
+//     int threadIndex,
+//     vector<uint32_t> &results,
+//     char preservedDelimiter)
+// {
+//     ifstream inFile(inputFileNameBin, ios::binary);
+//     ofstream outFile(outputFileNameBin, ios::binary | ios::app);
+//     if (!inFile || !outFile)
+//     {
+//         cerr << "Error opening files in thread " << threadIndex << endl;
+//         return -1;
+//     }
+
+//     inFile.seekg(start);
+//     const size_t bufferSize = 4096;
+//     char buffer[bufferSize];
+//     streamoff currentPos = static_cast<streamoff>(start);
+
+//     vector<uint8_t> lineCodeWords = convertSearchStringToCodeWord(processLineChar(searchString));
+//     vector<uint8_t> replaceCodeWords = convertSearchStringToCodeWord(processLineChar(replaceString));
+
+//     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
+//     uint32_t matchCount = 0;
+//     uint16_t byteIndex = 0;
+//     vector<uint8_t> tmpCodeWord;
+
+//     uint8_t byte = 0;
+//     uint32_t toSkip = 0;
+//     uint16_t nextByteCode;
+
+    
+//     while (start + currentPos < end && inFile)
+//     {
+//         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
+//         inFile.read(buffer, bytesToRead);
+//         size_t bytesRead = inFile.gcount();
+
+//         // --- Abbas ---
+        
+//         if(bytesToRead == bufferSize){
+//             //for(int i = bufferSize-1; i >= 0; i--)
+//             for(int i=bytesToRead-1; i>=0; i--)
+//             {
+//                 if( buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
+//                 {
+//                     bytesRead = i+1;
+//                     break;
+//                 }
+//             }
+//         }
+
+//         // -------------
+
+//         for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
+//         {
+//             byte = static_cast<uint8_t>(buffer[i]);
+//             uint16_t nextByteCode = byte % 2;
+
+//             if (byte == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && byte != lineCodeWords[byteIndex])
+//             {
+//                 // Add NEXT_SPECIAL_CODE byte
+//                 outFile.put(static_cast<char>(byte)); // write the NEXT_SPECIAL_CODE to the output file 
+//                 i++; currentPos++;
+                
+//                 // Number of ASCII Characters byte 
+//                 uint8_t skipLength = static_cast<uint8_t>(buffer[i]); // calculate the number of ASCII character in the special code-word
+//                 outFile.put(static_cast<char>(skipLength)); // write the number of ASCII character in the special code-word to the output file
+//                 i++; currentPos++;
+
+//                 // Add the ASCII characters as bytes
+//                 outFile.write(reinterpret_cast<const char*>(&buffer[i]), skipLength);
+//                 i += skipLength;
+//                 currentPos += skipLength;
+                
+//                 byteIndex = 0;
+//             }
+//             else
+//             {
+//                 if (byte == lineCodeWords[byteIndex])
+//                 {
+//                     tmpCodeWord.push_back(byte);
+//                     //i++; currentPos++;
+//                     byteIndex++;
+//                     if (byteIndex == lineCodeWordsSize)
+//                     {
+//                         outFile.write(reinterpret_cast<const char*>(replaceCodeWords.data()), replaceCodeWords.size());
+//                         matchCount++;
+//                         byteIndex = 0;
+//                         tmpCodeWord.clear();
+//                     }
+//                 }
+//                 else
+//                 {
+//                     while(nextByteCode==1){
+//                         //outFile.put(static_cast<char>(byte));
+//                         tmpCodeWord.push_back(byte);
+//                         i++; currentPos++;
+//                         byte = static_cast<uint8_t>(buffer[i]);
+//                         nextByteCode = static_cast<uint16_t>(byte) % 2;
+//                     }
+
+//                     tmpCodeWord.push_back(byte);
+
+//                     outFile.write(reinterpret_cast<const char*>(tmpCodeWord.data()), tmpCodeWord.size());
+//                     tmpCodeWord.clear();
+                    
+//                     byteIndex = 0;
+//                 }                
+//             }
+//         }
+//     }
+
+//     // Write preserved delimiter only if this is not already present as the last byte
+//     if (!outFile.fail() && preservedDelimiter != 0)
+//     {
+//         // outFile.put(preservedDelimiter); // tmp commented - Abbas
+//     }
+
+//     inFile.close();
+//     outFile.close();
+
+//     results[threadIndex] = matchCount;
+//     return 0;
+// }
  
 
 
@@ -593,6 +715,130 @@ uint32_t Lookup_and_Replace_Function(
 
 
 // Version 4
+// uint32_t Lookup_Function(
+//     const string &inputFileNameBin,
+//     streampos start,
+//     streampos end,
+//     string searchString,
+//     int threadIndex,
+//     vector<uint32_t> &results)
+// {
+//     ifstream inFile(inputFileNameBin, ios::binary);
+//     if (!inFile)
+//     {
+//         cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
+//         return -1;
+//     }
+
+//     inFile.seekg(start);
+//     const size_t bufferSize = 4096;
+//     char buffer[bufferSize];
+//     streamoff currentPos = static_cast<streamoff>(start);
+
+//     uint32_t matchCount = 0;
+//     uint16_t byteIndex = 0;
+//     vector<string> tokens = processLineChar(searchString);
+//     vector<uint8_t> lineCodeWords = convertSearchStringToCodeWord(tokens);
+//     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
+
+//     uint8_t byte = 0;
+//     uint32_t toSkip = 0;
+
+//     // -- for debug --
+//     uint32_t countDebug = 0;
+
+//     while (currentPos < end && inFile)
+//     {
+//         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
+//         inFile.read(buffer, bytesToRead);
+//         size_t bytesRead = inFile.gcount();
+
+        
+
+//         // --- Abbas ---
+        
+//         if(bytesToRead == bufferSize)
+//         {
+//             // -- for debug --
+//             //cout << "Debug: bytesToRead = bufferSize\n";
+
+//             //for(int i = bufferSize-1; i >= 0; i--)
+//             for(int i=bytesToRead-1; i>=0; i--)
+//             {
+//                 if( buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
+//                 {
+//                     bytesRead = i+1;
+//                     break;
+//                 }
+//             }
+//         }
+//         else{
+//             // -- for debug --
+//             cout << "Debug thread " <<  threadIndex << ": bytesToRead != bufferSize\n";
+//             countDebug++;
+//         }
+
+//         // -------------
+
+//         for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
+//         {
+//             byte = static_cast<uint8_t>(buffer[i]);
+//             uint16_t nextByteCode = byte % 2;
+
+//             if (byte == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && byte != lineCodeWords[byteIndex])
+//             {
+//                 if (i + 1 < bytesRead)
+//                 {
+//                     toSkip = static_cast<uint8_t>(buffer[i + 1]);
+//                     i += toSkip + 1;
+//                     currentPos += toSkip + 1;
+//                     byteIndex = 0;
+//                 }
+//                 else
+//                 {
+//                     inFile.read(buffer, 1);
+//                     toSkip = static_cast<uint8_t>(buffer[0]);
+//                     inFile.ignore(toSkip);
+//                     currentPos = inFile.tellg();
+//                     byteIndex = 0;
+//                     break;
+//                 }
+//             }
+//             else
+//             {
+//                 if (byte == lineCodeWords[byteIndex])
+//                 {
+//                     byteIndex++;
+//                 }
+//                 else if(nextByteCode == 1)
+//                 {
+//                     do{
+//                         i++; currentPos++; // skip he next byte of the code-word chain
+//                         nextByteCode = static_cast<uint16_t>(buffer[i]) % 2;
+//                     } while(nextByteCode==1);
+                    
+//                     byteIndex = 0;
+//                 }
+
+//                 if (byteIndex == lineCodeWordsSize)
+//                 {
+//                     byteIndex = 0;
+//                     matchCount++;
+//                 }
+//             }
+//         }
+//     }
+
+//     // -- for debug --
+//     cout << "Debug thread " <<  threadIndex << ": countDebug = " << countDebug << endl;
+
+//     inFile.close();
+//     results[threadIndex] = matchCount;
+//     return 0;
+// }
+
+
+// Version 3.1 (Stable)
 uint32_t Lookup_Function(
     const string &inputFileNameBin,
     streampos start,
@@ -615,8 +861,7 @@ uint32_t Lookup_Function(
 
     uint32_t matchCount = 0;
     uint16_t byteIndex = 0;
-    vector<string> tokens = processLineChar(searchString);
-    vector<uint8_t> lineCodeWords = convertSearchStringToCodeWord(tokens);
+    vector<uint8_t> lineCodeWords = convertSearchStringToCodeWord(processLineChar(searchString));
     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
 
     uint8_t byte = 0;
@@ -628,22 +873,27 @@ uint32_t Lookup_Function(
         inFile.read(buffer, bytesToRead);
         size_t bytesRead = inFile.gcount();
 
-        // --- Abbas ---
-        
-        if(bytesToRead == bufferSize)
+        // If we filled the buffer, find a safe break point
+        if (bytesRead == bufferSize)
         {
-            //for(int i = bufferSize-1; i >= 0; i--)
-            for(int i=bytesToRead-1; i>=0; i--)
+            size_t safeEnd = bufferSize;
+            for (int i = bufferSize - 1; i >= 0; --i)
             {
-                if( buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
+                if (buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6) // reserved code-words
                 {
-                    bytesRead = i+1;
+                    safeEnd = i;
                     break;
                 }
             }
+            // Adjust file position to re-read the skipped bytes in the next loop
+            size_t unreadBytes = bytesRead - safeEnd;
+            if (unreadBytes > 0)
+            {
+                inFile.clear(); // clear eofbit if set
+                inFile.seekg(-static_cast<streamoff>(unreadBytes), ios::cur);
+                bytesRead = safeEnd;
+            }
         }
-
-        // -------------
 
         for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
         {
@@ -659,15 +909,15 @@ uint32_t Lookup_Function(
                     currentPos += toSkip + 1;
                     byteIndex = 0;
                 }
-                else
-                {
-                    inFile.read(buffer, 1);
-                    toSkip = static_cast<uint8_t>(buffer[0]);
-                    inFile.ignore(toSkip);
-                    currentPos = inFile.tellg();
-                    byteIndex = 0;
-                    break;
-                }
+                // else
+                // {
+                //     inFile.read(buffer, 1);
+                //     toSkip = static_cast<uint8_t>(buffer[0]);
+                //     inFile.ignore(toSkip);
+                //     currentPos = inFile.tellg();
+                //     byteIndex = 0;
+                //     break;
+                // }
             }
             else
             {
@@ -675,13 +925,13 @@ uint32_t Lookup_Function(
                 {
                     byteIndex++;
                 }
-                else if(nextByteCode == 1)
+                else if (nextByteCode == 1)
                 {
-                    do{
-                        i++; currentPos++; // skip he next byte of the code-word chain
+                    do {
+                        i++; currentPos++;
                         nextByteCode = static_cast<uint16_t>(buffer[i]) % 2;
-                    } while(nextByteCode==1);
-                    
+                    } while (nextByteCode == 1);
+
                     byteIndex = 0;
                 }
 
@@ -698,6 +948,8 @@ uint32_t Lookup_Function(
     results[threadIndex] = matchCount;
     return 0;
 }
+
+
 
 
 // // Version 3 (Stable and running correctly)
@@ -730,11 +982,41 @@ uint32_t Lookup_Function(
 //     uint8_t byte = 0;
 //     uint32_t toSkip = 0;
 
+//     uint32_t backCounter = 0;
+
 //     while (currentPos < end && inFile)
 //     {
 //         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
 //         inFile.read(buffer, bytesToRead);
 //         size_t bytesRead = inFile.gcount();
+
+//         // // --- Abbas ---
+        
+//         // backCounter = 0;
+
+//         // if(bytesToRead == bufferSize)
+//         // {
+//         //     //for(int i = bufferSize-1; i >= 0; i--)
+//         //     for(int i=bytesToRead-1; i>=0; i--)
+//         //     {
+//         //         backCounter++;
+//         //         if( buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
+//         //         {
+//         //             bytesRead = i+1;
+//         //             backCounter--;
+//         //             break;
+//         //         }
+//         //     }
+//         // }
+        
+//         // currentPos = inFile.tellg();  // Absolute position after read
+//         // if (backCounter > 0)
+//         // {
+//         //     inFile.seekg(currentPos - backCounter, ios::beg);  // Move back by 'backCounter' bytes
+//         //     currentPos -= backCounter;  // update currentPos manually
+//         // }
+//         // // // -------------
+
 
 //         for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
 //         {
@@ -1077,104 +1359,215 @@ uint8_t Build_Dictionary_Table_Compression()
     return 0;
 }
 
-// Function to read a file line by line and process each line
-// uint8_t Compression_Function() {
-uint8_t Compression_Function(
-    const string &inputFileText,
-    streampos start,
-    streampos end,
-    const string &outputFileBin)
-{
+// -------------------------------------------
+// ------ Compression Function --------------
 
-    ifstream inFile(inputFileText); // Open the file
-    if (!inFile)
-    {
-        cerr << "Error opening file: " << inputFileNameText << endl;
-        return -1;
-    }
 
-    // Set the file pointer to the start of this thread's chunk
-    inFile.seekg(start); // Move file pointer to start position
+// // Version 2
+// uint8_t Compression_Function(
+//     const string &inputFileText,
+//     streampos start,
+//     streampos end,
+//     const string &outputFileBin)
+// {
+//     ifstream inFile(inputFileText);
+//     if (!inFile)
+//     {
+//         cerr << "Error opening file: " << inputFileText << endl;
+//         return -1;
+//     }
 
-    // Adjust the start position to the nearest newline
-    if (start > 0)
-    { // Not the first chunk
-        string temp;
-        getline(inFile, temp); // Skip the partial line
-    }
+//     inFile.seekg(start);
+//     if (start > 0)
+//     {
+//         string temp;
+//         getline(inFile, temp);
+//     }
 
-    // // Recalculate end within this thread to avoid race conditions
-    // streampos adjustedEnd = end;
-    // if (inFile.tellg() < end) {
-    //     inFile.seekg(end);
-    //     string temp;
-    //     getline(inFile, temp); // Move past partial line
-    //     adjustedEnd = inFile.tellg(); // Adjusted to the next newline
-    // }
+//     lock_guard<mutex> lock(fileMutex);
+//     ofstream outFile(outputFileBin, ios::binary | ios::app);
+//     if (!outFile)
+//     {
+//         cerr << "Error: Could not open the file." << endl;
+//         return 1;
+//     }
 
-    lock_guard<mutex> lock(fileMutex);
-    // Open the output file in binary mode and in append mode
-    ofstream outFile(outputFileBin, ios::binary | ios::app);
-    if (!outFile)
-    {
-        cerr << "Error: Could not open the file." << endl;
-        return 1;
-    }
+//     const size_t bufferSize = 4096;
+//     char buffer[bufferSize];
+//     streamoff currentPos = static_cast<streamoff>(start);
 
-    vector<string> tokens;
-    vector<uint8_t> lineCodeWords;
-    const char *buffer;
-    size_t bufferSize;
-    string line;
+//     vector<string> tokens;
+//     vector<uint8_t> lineCodeWords;
+//     const char *bufferPtr;
+//     size_t bufferLen;
 
-    //*** Method 1 ***
-    string currentLine, nextLine;
+//     string chunkText = "";
+//     while (currentPos < end && inFile)
+//     {
+//         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
+//         inFile.read(buffer, bytesToRead);
+//         size_t bytesRead = inFile.gcount();
 
-    // Read the first line before entering the loop
-    // if (inFile.tellg() < end && getline(inFile, currentLine)) {
-    if (getline(inFile, currentLine))
-    {
-        while (inFile.tellg() <= end)
-        { // Check if the next position would exceed 'end'
-            // Peek ahead to check for the next line
-            if (getline(inFile, nextLine))
-            {
-                // Process the current line
-                tokens = processLineChar(currentLine);           // Process the line
-                lineCodeWords = convertStringToCodeWord(tokens); // Generate the code words
+//         size_t safeEnd = bytesRead;
+//         for (size_t i = bytesRead - 1; i > 0; --i)
+//         {
+//             if (buffer[i] == '\n')
+//             {
+//                 safeEnd = i + 1;
+//                 break;
+//             }
+//         }
 
-                buffer = reinterpret_cast<const char *>(lineCodeWords.data());
-                bufferSize = lineCodeWords.size();
-                outFile.write(buffer, bufferSize);
+//         size_t unreadBytes = bytesRead - safeEnd;
+//         if (unreadBytes > 0)
+//         {
+//             inFile.clear();
+//             inFile.seekg(-static_cast<streamoff>(unreadBytes), ios::cur);
+//             bytesRead = safeEnd;
+//         }
 
-                // Move to the next line
-                currentLine = nextLine;
-            }
-            else
-            {
-                // Handle the last line (no next line available)
-                tokens = processLineChar(currentLine);           // Process the line
-                lineCodeWords = convertStringToCodeWord(tokens); // Generate the code words
+//         chunkText.append(buffer, bytesRead);
+//         currentPos = inFile.tellg();
 
-                lineCodeWords.pop_back(); // remove the last new line at the end of file
-                buffer = reinterpret_cast<const char *>(lineCodeWords.data());
-                bufferSize = lineCodeWords.size();
-                outFile.write(buffer, bufferSize);
+//         // Process full lines from chunkText
+//         istringstream chunkStream(chunkText);
+//         string line;
+//         while (getline(chunkStream, line))
+//         {
+//             if (chunkStream.eof() && chunkText.back() != '\n')
+//                 break; // wait until next buffer if line is incomplete
 
-                // Break out of the loop after processing the last line
-                break;
-            }
-        }
-    }
+//             tokens = processLineChar(line);
+//             lineCodeWords = convertStringToCodeWord(tokens);
+//             bufferPtr = reinterpret_cast<const char *>(lineCodeWords.data());
+//             bufferLen = lineCodeWords.size();
+//             outFile.write(bufferPtr, bufferLen);
+//         }
 
-    inFile.close();  // Close the input file
-    outFile.close(); // Close the output file
+//         // Save any incomplete line to retry in the next chunk
+//         if (!chunkText.empty() && chunkText.back() != '\n')
+//         {
+//             size_t lastNewline = chunkText.find_last_of('\n');
+//             if (lastNewline != string::npos)
+//                 chunkText = chunkText.substr(lastNewline + 1);
+//         }
+//         else
+//         {
+//             chunkText.clear();
+//         }
+//     }
 
-    return 0;
-}
+//     inFile.close();
+//     outFile.close();
+
+//     return 0;
+// }
+
+
+
+// // Version 1 (Original, Stable)
+// // Function to read a file line by line and process each line
+// // uint8_t Compression_Function() {
+// uint8_t Compression_Function(
+//     const string &inputFileText,
+//     streampos start,
+//     streampos end,
+//     const string &outputFileBin)
+// {
+
+//     ifstream inFile(inputFileText); // Open the file
+//     if (!inFile)
+//     {
+//         cerr << "Error opening file: " << inputFileNameText << endl;
+//         return -1;
+//     }
+
+//     // Set the file pointer to the start of this thread's chunk
+//     inFile.seekg(start); // Move file pointer to start position
+
+//     // Adjust the start position to the nearest newline
+//     if (start > 0)
+//     { // Not the first chunk
+//         string temp;
+//         getline(inFile, temp); // Skip the partial line
+//     }
+
+//     // // Recalculate end within this thread to avoid race conditions
+//     // streampos adjustedEnd = end;
+//     // if (inFile.tellg() < end) {
+//     //     inFile.seekg(end);
+//     //     string temp;
+//     //     getline(inFile, temp); // Move past partial line
+//     //     adjustedEnd = inFile.tellg(); // Adjusted to the next newline
+//     // }
+
+//     lock_guard<mutex> lock(fileMutex);
+//     // Open the output file in binary mode and in append mode
+//     ofstream outFile(outputFileBin, ios::binary | ios::app);
+//     if (!outFile)
+//     {
+//         cerr << "Error: Could not open the file." << endl;
+//         return 1;
+//     }
+
+//     vector<string> tokens;
+//     vector<uint8_t> lineCodeWords;
+//     const char *buffer;
+//     size_t bufferSize;
+//     string line;
+
+//     //*** Method 1 ***
+//     string currentLine, nextLine;
+
+//     // Read the first line before entering the loop
+//     // if (inFile.tellg() < end && getline(inFile, currentLine)) {
+//     if (getline(inFile, currentLine))
+//     {
+//         while (inFile.tellg() <= end)
+//         { // Check if the next position would exceed 'end'
+//             // Peek ahead to check for the next line
+//             if (getline(inFile, nextLine))
+//             {
+//                 // Process the current line
+//                 tokens = processLineChar(currentLine);           // Process the line
+//                 lineCodeWords = convertStringToCodeWord(tokens); // Generate the code words
+
+//                 buffer = reinterpret_cast<const char *>(lineCodeWords.data());
+//                 bufferSize = lineCodeWords.size();
+//                 outFile.write(buffer, bufferSize);
+
+//                 // Move to the next line
+//                 currentLine = nextLine;
+//             }
+//             else
+//             {
+//                 // Handle the last line (no next line available)
+//                 tokens = processLineChar(currentLine);           // Process the line
+//                 lineCodeWords = convertStringToCodeWord(tokens); // Generate the code words
+
+//                 lineCodeWords.pop_back(); // remove the last new line at the end of file
+//                 buffer = reinterpret_cast<const char *>(lineCodeWords.data());
+//                 bufferSize = lineCodeWords.size();
+//                 outFile.write(buffer, bufferSize);
+
+//                 // Break out of the loop after processing the last line
+//                 break;
+//             }
+//         }
+//     }
+
+//     inFile.close();  // Close the input file
+//     outFile.close(); // Close the output file
+
+//     return 0;
+// }
+
+
+
+// -------------------------------------------------
+
 
 /*
--- Compression Function --
 A function used to process each line read from a plain text file separately.
 It will recognize between words, characters, uppercase, and puctuation characters.
 */
@@ -1462,57 +1855,65 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
 // ----------------------------------
 // ---- Decompression Function ------
 
-// Version 2
+
+// Version 3 (Stable)
 uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, streampos end, const string &outputFileNameText)
 {
-    vector<uint8_t> byteCodes;
-    uint32_t tmpSerial = 0, finalSerial = 0;
-    string word;
-
     ifstream inFile(inputFileNameBin, ios::binary);
-    if (!inFile)
+    ofstream outFile(outputFileNameText, ios::app);
+    if (!inFile || !outFile)
     {
-        cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
+        cerr << "Error opening files for decompression." << endl;
         return -1;
     }
 
     inFile.seekg(start);
-    lock_guard<mutex> lock(fileMutex);
-
-    ofstream outFile(outputFileNameText, ios::app);
-    if (!outFile)
-    {
-        cerr << "Error: Could not open file " << outputFileNameText << " for appending." << endl;
-        return -1;
-    }
-
     const size_t bufferSize = 4096;
     char buffer[bufferSize];
-    streamoff currentOffset = 0;
+    streamoff currentPos = static_cast<streamoff>(start);
 
+    uint32_t tmpSerial = 0, finalSerial = 0;
+    string word;
     uint8_t nextByte;
-    size_t byteIndex = 0;
     bool NEXT_CAP = false;
-    int serial = 0;
     uint32_t count = 0;
 
-    while (start + currentOffset < end && inFile)
+    while (currentPos < end && inFile)
     {
-        size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - (start + currentOffset)));
-        inFile.clear();
-        inFile.seekg(start + currentOffset);
+        size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
         inFile.read(buffer, bytesToRead);
         size_t bytesRead = inFile.gcount();
 
-        for (size_t i = 0; i < bytesRead && start + currentOffset < end; ++i, ++currentOffset)
+        if (bytesRead == bufferSize)
         {
-            uint8_t tmpSerial = static_cast<uint8_t>(buffer[i]);
-            nextByte = tmpSerial % 2;
-            tmpSerial = tmpSerial >> 1;
+            size_t safeEnd = bufferSize;
+            for (int i = bufferSize - 1; i >= 0; --i)
+            {
+                if (buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
+                {
+                    safeEnd = i;
+                    break;
+                }
+            }
+            size_t unreadBytes = bytesRead - safeEnd;
+            if (unreadBytes > 0)
+            {
+                inFile.clear();
+                inFile.seekg(-static_cast<streamoff>(unreadBytes), ios::cur);
+                bytesRead = safeEnd;
+            }
+        }
+
+        for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
+        {
+            uint8_t byte = static_cast<uint8_t>(buffer[i]);
+
+            nextByte = byte % 2;
+            byte >>= 1;
 
             if (nextByte == 0)
             {
-                finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, tmpSerial, count));
+                finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, byte, count));
 
                 if (count == 1)
                     finalSerial += TWO_BYTE_OFFSET;
@@ -1547,37 +1948,139 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
                     outFile << word;
                 }
 
-                tmpSerial = 0;
-                finalSerial = 0;
+                tmpSerial = finalSerial = 0;
                 count = 0;
             }
             else
             {
-                finalSerial = concatenateBytes(finalSerial, tmpSerial, count);
+                finalSerial = concatenateBytes(finalSerial, byte, count);
                 count++;
             }
-
-            byteIndex++;
         }
-
-        if (bytesRead == 0)
-            ++currentOffset;
-    }
-
-    if (inFile.eof())
-    {
-        cerr << "End of file reached." << endl;
-    }
-    else if (inFile.fail())
-    {
-        cerr << "Error: Failed to read the file." << endl;
     }
 
     inFile.close();
     outFile.close();
-
     return 0;
 }
+
+
+// // Version 2
+// uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, streampos end, const string &outputFileNameText)
+// {
+//     vector<uint8_t> byteCodes;
+//     uint32_t tmpSerial = 0, finalSerial = 0;
+//     string word;
+
+//     ifstream inFile(inputFileNameBin, ios::binary);
+//     if (!inFile)
+//     {
+//         cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
+//         return -1;
+//     }
+
+//     inFile.seekg(start);
+//     lock_guard<mutex> lock(fileMutex);
+
+//     ofstream outFile(outputFileNameText, ios::app);
+//     if (!outFile)
+//     {
+//         cerr << "Error: Could not open file " << outputFileNameText << " for appending." << endl;
+//         return -1;
+//     }
+
+//     const size_t bufferSize = 4096;
+//     char buffer[bufferSize];
+//     streamoff currentOffset = 0;
+
+//     uint8_t nextByte;
+//     size_t byteIndex = 0;
+//     bool NEXT_CAP = false;
+//     int serial = 0;
+//     uint32_t count = 0;
+
+//     while (start + currentOffset < end && inFile)
+//     {
+//         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - (start + currentOffset)));
+//         inFile.clear();
+//         inFile.seekg(start + currentOffset);
+//         inFile.read(buffer, bytesToRead);
+//         size_t bytesRead = inFile.gcount();
+
+//         for (size_t i = 0; i < bytesRead && start + currentOffset < end; ++i, ++currentOffset)
+//         {
+//             uint8_t tmpSerial = static_cast<uint8_t>(buffer[i]);
+//             nextByte = tmpSerial % 2;
+//             tmpSerial = tmpSerial >> 1;
+
+//             if (nextByte == 0)
+//             {
+//                 finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, tmpSerial, count));
+
+//                 if (count == 1)
+//                     finalSerial += TWO_BYTE_OFFSET;
+//                 else if (count == 2)
+//                     finalSerial += THREE_BYTE_OFFSET;
+
+//                 if (finalSerial == SPACE_CODE)
+//                 {
+//                     outFile << " ";
+//                 }
+//                 else if (finalSerial == NEW_LINE_CODE)
+//                 {
+//                     outFile << "\n";
+//                 }
+//                 else if (finalSerial == NEXT_CAPITAL_CODE)
+//                 {
+//                     NEXT_CAP = true;
+//                 }
+//                 else if (finalSerial == NEXT_SPECIAL_CODE)
+//                 {
+//                     word = SPECIAL_CODE_WORD_READER(&inFile);
+//                     outFile << word;
+//                 }
+//                 else
+//                 {
+//                     word = dictMapCodeArray[finalSerial];
+//                     if (NEXT_CAP)
+//                     {
+//                         word[0] = toupper(word[0]);
+//                         NEXT_CAP = false;
+//                     }
+//                     outFile << word;
+//                 }
+
+//                 tmpSerial = 0;
+//                 finalSerial = 0;
+//                 count = 0;
+//             }
+//             else
+//             {
+//                 finalSerial = concatenateBytes(finalSerial, tmpSerial, count);
+//                 count++;
+//             }
+
+//             byteIndex++;
+//         }
+
+//         if (bytesRead == 0)
+//             ++currentOffset;
+//     }
+
+//     if (inFile.eof())
+//     {
+//         cerr << "End of file reached." << endl;
+//     }
+//     else if (inFile.fail())
+//     {
+//         cerr << "Error: Failed to read the file." << endl;
+//     }
+
+//     inFile.close();
+//     outFile.close();
+
+//     return 0;
+// }
 
 
 
@@ -2331,6 +2834,7 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
                     break;
                 }
             }
+
             tempFile.close();
         }
 
@@ -2359,7 +2863,7 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
     }
 
     cout << "Total matched values = " << sumAllMatch << endl;
-    cout << "Lookup operation has been completed." << endl;
+    //cout << "Lookup operation has been completed." << endl;
 
     return 0;
 }
@@ -2459,107 +2963,13 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
 
 // // Version 1 - Replace
 // // Function to split a binary file into chunks and process them
-// uint8_t splitAndProcessBinaryFileForSearchAndReplace(
-//     const string &inputFile, 
-//     const string &outputFile, 
-//     int numThreads, 
-//     string searchString, 
-//     string replaceString
-// )
-// {
-//     ifstream inFile(inputFile, ios::binary);
-//     if (!inFile)
-//     {
-//         cerr << "Error opening input file: " << inputFile << endl;
-//         return -1;
-//     }
-
-//     inFile.seekg(0, ios::end);
-//     streampos fileSize = inFile.tellg();
-//     streampos chunkSize = fileSize / numThreads;
-
-//     vector<thread> threads;
-//     vector<string> tempFiles;
-//     streampos start=0, end=0;
-
-//     vector<uint32_t> countMatchVector(numThreads, 0);
-//     vector<char> preservedDelimiters(numThreads); // NEW
-
-//     for (int i = 0; i < numThreads; i++)
-//     {
-//         cout << "Initial value of count[" << i << "] = " << countMatchVector[i] << endl;
-//     }
-
-//     for (int i = 0; i < numThreads; i++)
-//     {
-//         // if (i == 0)
-//         //     start = 0;
-//         // else
-//         //     start = end+1;
-
-//         // // end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize); // tmp - Abbas
-//         // end = (i == numThreads - 1) ? fileSize : streampos((i+1) * chunkSize);
-
-//         // if (i == 0)
-//         //     start = 0;
-//         // else
-//         //     start = end;
-        
-//         start = end;
-//         end = (i == numThreads - 1) ? fileSize : streampos(start + chunkSize);
-
-//         // Adjust end position to the nearest newline (0x02) boundary
-//         if (i != numThreads - 1)
-//         {
-//             ifstream tempFile(inputFile, ios::binary);
-//             tempFile.seekg(end);
-//             char c;
-//             while (tempFile.get(c))
-//             {
-//                 if (c == 0x02 || c == 0x00)
-//                     break; // Stop at newline or space
-//             }
-//             end = tempFile.tellg();
-//             tempFile.close();
-//         }
-
-//         string chunkFile = "chunk_" + to_string(i) + ".bin";
-//         tempFiles.push_back(chunkFile);
-//         threads.emplace_back(Lookup_and_Replace_Function, inputFile, start, end, chunkFile, searchString, replaceString, i, ref(countMatchVector)); // 'i' is the threadIndex
-
-//         // cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
-//     }
-
-//     for (auto &t : threads)
-//     {
-//         t.join();
-//     }
-
-//     uint32_t sumAllMatch = 0;
-//     for (int i = 0; i < numThreads; i++) // summation of all matched values from all threads
-//     {
-//         sumAllMatch += countMatchVector[i];
-//         cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
-//     }
-
-//     cout << "Total matched values = " << sumAllMatch << endl;
-
-//     // Don't need to merge, we don't have an output file to generate
-//     mergeTextFiles(tempFiles, outputFile);
-//     cout << "Lookup completed and merged into " << outputFile << endl;
-//     cout << "Lookup operation has been completed." << endl;
-
-//     return 0;
-// }
-
-
-// // Version 2 - Replace
 uint8_t splitAndProcessBinaryFileForSearchAndReplace(
-    const string &inputFile,
-    const string &outputFile,
-    int numThreads,
-    string searchString,
-    string replaceString)
+    const string &inputFile, 
+    const string &outputFile, 
+    int numThreads, 
+    string searchString, 
+    string replaceString
+)
 {
     ifstream inFile(inputFile, ios::binary);
     if (!inFile)
@@ -2586,11 +2996,23 @@ uint8_t splitAndProcessBinaryFileForSearchAndReplace(
 
     for (int i = 0; i < numThreads; i++)
     {
+        // if (i == 0)
+        //     start = 0;
+        // else
+        //     start = end+1;
+
+        // // end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize); // tmp - Abbas
+        // end = (i == numThreads - 1) ? fileSize : streampos((i+1) * chunkSize);
+
+        // if (i == 0)
+        //     start = 0;
+        // else
+        //     start = end;
+        
         start = end;
         end = (i == numThreads - 1) ? fileSize : streampos(start + chunkSize);
 
         // Adjust end position to the nearest newline (0x02) boundary
-        char delimiterByte = 0x02; // default
         if (i != numThreads - 1)
         {
             ifstream tempFile(inputFile, ios::binary);
@@ -2599,19 +3021,17 @@ uint8_t splitAndProcessBinaryFileForSearchAndReplace(
             while (tempFile.get(c))
             {
                 if (c == 0x02 || c == 0x00)
-                {
-                    delimiterByte = c;
                     break; // Stop at newline or space
-                }
             }
             end = tempFile.tellg();
             tempFile.close();
         }
-        preservedDelimiters[i] = delimiterByte; // store the preserved delimiter
 
         string chunkFile = "chunk_" + to_string(i) + ".bin";
         tempFiles.push_back(chunkFile);
-        threads.emplace_back(Lookup_and_Replace_Function, inputFile, start, end, chunkFile, searchString, replaceString, i, ref(countMatchVector), preservedDelimiters[i]); // 'i' is the threadIndex
+        threads.emplace_back(Lookup_and_Replace_Function, inputFile, start, end, chunkFile, searchString, replaceString, i, ref(countMatchVector)); // 'i' is the threadIndex
+
+        // cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
     }
 
     for (auto &t : threads)
@@ -2628,10 +3048,204 @@ uint8_t splitAndProcessBinaryFileForSearchAndReplace(
 
     cout << "Total matched values = " << sumAllMatch << endl;
 
-    // Don't need to merge, we don't have an output file to generate
-    mergeTextFiles(tempFiles, outputFile);
+    mergeBinaryFiles(tempFiles, outputFile);
     cout << "Lookup completed and merged into " << outputFile << endl;
     cout << "Lookup operation has been completed." << endl;
 
     return 0;
 }
+
+
+// // Version 2 - Replace
+// uint8_t splitAndProcessBinaryFileForSearchAndReplace(
+//     const string &inputFile,
+//     const string &outputFile,
+//     int numThreads,
+//     string searchString,
+//     string replaceString)
+// {
+//     ifstream inFile(inputFile, ios::binary);
+//     if (!inFile)
+//     {
+//         cerr << "Error opening input file: " << inputFile << endl;
+//         return -1;
+//     }
+
+//     inFile.seekg(0, ios::end);
+//     streampos fileSize = inFile.tellg();
+//     streampos chunkSize = fileSize / numThreads;
+
+//     vector<thread> threads;
+//     vector<string> tempFiles;
+//     streampos start=0, end=0;
+
+//     vector<char> preservedDelimiters(numThreads); // NEW
+//     vector<streampos> adjustedEnds(numThreads);
+//     vector<uint32_t> countMatchVector(numThreads, 0);
+
+//     // for (int i = 0; i < numThreads; i++)
+//     // {
+//     //     cout << "Initial value of count[" << i << "] = " << countMatchVector[i] << endl;
+//     // }
+
+//     for (int i = 0; i < numThreads; i++)
+//     {
+//         start = end;
+//         end = (i == numThreads - 1) ? fileSize : streampos(start + chunkSize);
+
+//         streamoff roughStart = i * chunkSize;
+//         //streamoff roughEnd = (i == numThreads - 1) ? fileSize : (i + 1) * chunkSize;
+//         streamoff roughEnd = (i == numThreads - 1) ? static_cast<streamoff>(fileSize) : (i + 1) * chunkSize;
+
+
+//         streampos adjustedEnd = static_cast<streampos>(roughEnd);
+//         // Adjust end position to the nearest newline (0x02) boundary
+//         char delimiterByte = 0x02; // default
+//         if (i != numThreads - 1)
+//         {
+//             ifstream tempFile(inputFile, ios::binary);
+//             tempFile.seekg(end);
+//             char c;
+//             while (tempFile.get(c))
+//             {
+//                 if (c == 0x02 || c == 0x00)
+//                 {
+//                     delimiterByte = c;
+//                     break; // Stop at newline or space
+//                 }
+//             }
+
+//             end = tempFile.tellg();
+//             tempFile.close();
+//         }
+//         preservedDelimiters[i] = delimiterByte; // store the preserved delimiter
+
+//         adjustedEnds[i] = adjustedEnd;
+
+//         start = (i == 0) ? static_cast<streampos>(0) : adjustedEnds[i - 1];
+//         end = adjustedEnds[i];
+
+//         string chunkFile = "chunk_" + to_string(i) + ".bin";
+//         tempFiles.push_back(chunkFile);
+//         threads.emplace_back(Lookup_and_Replace_Function, inputFile, start, end, chunkFile, searchString, replaceString, i, ref(countMatchVector), preservedDelimiters[i]); // 'i' is the threadIndex
+//     }
+
+//     for (auto &t : threads)
+//     {
+//         t.join();
+//     }
+
+//     uint32_t sumAllMatch = 0;
+//     for (int i = 0; i < numThreads; i++) // summation of all matched values from all threads
+//     {
+//         sumAllMatch += countMatchVector[i];
+//         cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
+//     }
+
+//     cout << "Total matched values = " << sumAllMatch << endl;
+
+//     mergeBinaryFiles(tempFiles, outputFile);
+//     cout << "Lookup and Replace completed and merged into " << outputFile << endl;
+//     //cout << "Lookup and Replace operation has been completed." << endl;
+
+//     return 0;
+// }
+
+
+// Version 3 -- Replace 
+// uint8_t splitAndProcessBinaryFileForSearchAndReplace(
+//     const string &inputFile,
+//     const string &outputFile,
+//     int numThreads,
+//     string searchString,
+//     string replaceString)
+// {
+//     ifstream inFile(inputFile, ios::binary);
+//     if (!inFile)
+//     {
+//         cerr << "Error opening input file: " << inputFile << endl;
+//         return -1;
+//     }
+
+//     inFile.seekg(0, ios::end);
+//     streamoff fileSize = static_cast<streamoff>(inFile.tellg());
+//     streamoff chunkSize = fileSize / numThreads;
+
+//     vector<thread> threads;
+//     vector<string> tempFiles;
+//     streampos start = 0, end = 0;
+
+//     vector<streampos> adjustedEnds(numThreads);
+//     vector<uint32_t> countMatchVector(numThreads, 0);
+
+//     // First pass: calculate adjusted end boundaries to stop at newline (0x00) or space (0x02)
+//     for (int i = 0; i < numThreads; i++)
+//     {
+//         streamoff roughEnd = (i == numThreads - 1) ? fileSize : (i + 1) * chunkSize;
+//         streampos adjustedEnd = static_cast<streampos>(roughEnd);
+
+//         if (i != numThreads - 1)
+//         {
+//             ifstream tempFile(inputFile, ios::binary);
+//             tempFile.seekg(adjustedEnd);
+//             char c;
+//             while (tempFile.get(c))
+//             {
+//                 if (c == 0x00 || c == 0x02)
+//                 {
+//                     adjustedEnd = tempFile.tellg();
+//                     break;
+//                 }
+//             }
+//             tempFile.close();
+//         }
+
+//         adjustedEnds[i] = adjustedEnd;
+//     }
+
+//     // Second pass: spawn threads with safe, non-overlapping boundaries
+//     for (int i = 0; i < numThreads; i++)
+//     {
+//         start = (i == 0) ? static_cast<streampos>(0) : adjustedEnds[i - 1];
+//         end = adjustedEnds[i];
+
+//         if (start >= end)
+//         {
+//             cerr << "Skipping thread " << i << " due to invalid range." << endl;
+//             continue;
+//         }
+
+//         string chunkFile = "chunk_" + to_string(i) + ".bin";
+//         tempFiles.push_back(chunkFile);
+//         threads.emplace_back(Lookup_and_Replace_Function, 
+//             inputFile, 
+//             start, 
+//             end, 
+//             chunkFile, 
+//             searchString, 
+//             replaceString, 
+//             i, 
+//             ref(countMatchVector)
+//         );
+
+//     }
+
+//     for (auto &t : threads)
+//     {
+//         t.join();
+//     }
+
+//     uint32_t sumAllMatch = 0;
+//     for (int i = 0; i < numThreads; i++)
+//     {
+//         sumAllMatch += countMatchVector[i];
+//         cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
+//     }
+
+//     cout << "Total matched values = " << sumAllMatch << endl;
+
+//     mergeBinaryFiles(tempFiles, outputFile);
+//     cout << "Lookup and Replace completed and merged into " << outputFile << endl;
+
+//     return 0;
+// }
