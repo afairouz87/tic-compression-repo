@@ -11,13 +11,14 @@ based on the frequency of words/letter/punctuations.
 Main Files:
 -----------
 1. dict.txt:
-3. piv-v1.cpp: old PIC compression C++ file 
-4. epic-v1.cpp: new enhanced PIC compression C++ file
+2. pic-v1.cpp: old PIC compression C++ file 
+3. epic-v3.1.cpp epic-v3.1.h: new enhanced PIC compression C++ file (Multi-threading version)
+3. epic-v1.cpp: new enhanced PIC compression C++ file (Single thread version)
 
 Complementary Files:
 --------------------
-1. 
-2. 
+1. measureTime.py: measuring the process time
+2. pre-process-dict.py: pre-process and clean the dictionary file
 
 Complementary Directories:
 --------------------------
