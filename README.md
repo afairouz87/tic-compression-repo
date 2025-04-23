@@ -4,8 +4,8 @@ Plaint-text Incremental Compression (PIC) Technique
 
 Description:
 ------------
-It is a dictionary based compresssion technique. 
-In this technique, it generates a hash-map of all words in the dictionary and generates a code-word (endoding) 
+It is a dictionary-based compresssion technique. 
+In this technique, it generates a hash-map of all words in the dictionary and generates a code-word (encoding) 
 based on the frequency of words/letter/punctuations. 
 
 Main Files:
