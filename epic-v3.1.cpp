@@ -116,10 +116,14 @@ int main(int argc, char *argv[])
     if(string(argv[2]) == "-l" && argc != 7)
     {
         cerr << "For -l flag, you need to add the search string.\n";
+
+        return 1;
     }
     if(string(argv[2]) == "-r" && argc != 8)
     {
         cerr << "For -r flag, you need to add the search string and the replace string.\n";
+
+        return 1;
     }
 
     string inputFileName = argv[1];
