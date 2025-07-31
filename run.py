@@ -6,10 +6,12 @@ import os
 import pandas as pd
 
 # --- Configuration ---
-input_file_txt = "test4.txt"
-compressed_epic = input_file_txt + ".bin"
-compressed_gzip = input_file_txt + ".gz"
-cpp_binary_compression = "./epic-v3.1"
+input_file_txt      = "test4.txt"
+compressed_epic     = input_file_txt + ".bin"
+compressed_gzip     = input_file_txt + ".gz"
+compressed_bzip2    = input_file_txt + ".bz2"
+compressed_lz4      = input_file_txt + ".lz4"
+epic_binary_compression = "./epic-v3.1"
 
 # --- Measurement Helper ---
 def measure(command):
@@ -34,57 +36,105 @@ def measure(command):
 
 def main():
     # 1) EPIC compression
-    cpp_time, cpp_mem = measure([
-        cpp_binary_compression, 
-        input_file_txt, 
-        "-c", 
-        "-t", "1", 
+    epic_time, epic_mem = measure([
+        epic_binary_compression,
+        input_file_txt,
+        "-c", "-t", "1",
         compressed_epic
     ])
+    if not os.path.exists(compressed_epic):
+        raise RuntimeError(f"EPIC output not found: {compressed_epic}")
 
     # 2) gzip compression
-    gzip_time, gzip_mem = measure([
-        "gzip", "-k", input_file_txt
-    ])
+    gzip_time, gzip_mem = measure(["gzip", "-kf", input_file_txt])
+    if not os.path.exists(compressed_gzip):
+        raise RuntimeError(f"gzip output not found: {compressed_gzip}")
 
-    # 3) Compute sizes & factors
-    orig_size = os.path.getsize(input_file_txt)
-    epic_size = os.path.getsize(compressed_epic)
-    gzip_size = os.path.getsize(compressed_gzip)
+    # 3) bzip2 compression
+    bzip2_time, bzip2_mem = measure(["bzip2", "-kf", input_file_txt])
+    if not os.path.exists(compressed_bzip2):
+        raise RuntimeError(f"bzip2 output not found: {compressed_bzip2}")
 
-    epic_factor = orig_size / epic_size
-    gzip_factor = orig_size / gzip_size
+    # 4) lz4 compression
+    lz4_time, lz4_mem = measure(["lz4", "-kf", input_file_txt])
+    if not os.path.exists(compressed_lz4):
+        raise RuntimeError(f"lz4 output not found: {compressed_lz4}")
 
-    # 4) Collect results
-    results = [
-        {
-            "tool": "EPIC",
-            "runtime_s": cpp_time,
-            "memory_MB": cpp_mem,
-            "compression_factor": epic_factor
-        },
-        {
-            "tool": "gzip",
-            "runtime_s": gzip_time,
-            "memory_MB": gzip_mem,
-            "compression_factor": gzip_factor
-        }
-    ]
+    # Compute sizes & factors
+    orig_size     = os.path.getsize(input_file_txt)
+    epic_size     = os.path.getsize(compressed_epic)
+    gzip_size     = os.path.getsize(compressed_gzip)
+    bzip2_size    = os.path.getsize(compressed_bzip2)
+    lz4_size      = os.path.getsize(compressed_lz4)
+    orig_size_MB  = orig_size / (1024**2)
 
-    # 5) Save to CSV
-    df = pd.DataFrame(results)
-    df.to_csv("compression_results.csv", index=False)
-    print("Results written to compression_results.csv")
+    epic_factor   = orig_size / epic_size
+    gzip_factor   = orig_size / gzip_size
+    bzip2_factor  = orig_size / bzip2_size
+    lz4_factor    = orig_size / lz4_size
 
-    # Clean up if needed
-    if os.path.exists(compressed_gzip):
-        os.remove(compressed_gzip)
-        
-    if os.path.exists(compressed_epic):    
-        os.remove(compressed_epic)
+    # Compute runtime enhancements vs EPIC
+    gzip_speedup  = gzip_time / epic_time
+    bzip2_speedup = bzip2_time / epic_time
+    lz4_speedup   = lz4_time / epic_time
+
+    # Compute memory enhancements vs EPIC
+    gzip_mem_speedup  = gzip_mem  / epic_mem
+    bzip2_mem_speedup = bzip2_mem / epic_mem
+    lz4_mem_speedup   = lz4_mem   / epic_mem
+
+    # Prepare CSV data
+    results_cr = [{
+        "File Name": input_file_txt,
+        "Original Size (MB)": round(orig_size_MB, 3),
+        "EPIC": round(epic_factor, 3),
+        "gzip": round(gzip_factor, 3),
+        "bzip2": round(bzip2_factor, 3),
+        "lz4": round(lz4_factor, 3)
+    }]
+
+    results_time = [{
+        "File Name": input_file_txt,
+        "Original Size (MB)": round(orig_size_MB, 3),
+        "EPIC time (s)": round(epic_time, 3),
+        "gzip/EPIC": round(gzip_speedup, 3),
+        "bzip2/EPIC": round(bzip2_speedup, 3),
+        "lz4/EPIC": round(lz4_speedup, 3)
+    }]
+
+    results_mem = [{
+        "File Name": input_file_txt,
+        "Original Size (MB)": round(orig_size_MB, 3),
+        "EPIC MEM (MB)": round(epic_mem, 3),
+        "gzip/EPIC": round(gzip_mem_speedup, 3),
+        "bzip2/EPIC": round(bzip2_mem_speedup, 3),
+        "lz4/EPIC": round(lz4_mem_speedup, 3)
+    }]
+
+    # Write CSVs
+    pd.DataFrame(results_cr).to_csv("cr_results.csv", index=False)
+    pd.DataFrame(results_time).to_csv("c_time_results.csv", index=False)
+    pd.DataFrame(results_mem).to_csv("mem_results.csv", index=False)
+    print("Wrote: cr_results.csv, c_time_results.csv, mem_results.csv")
+
+    # Clean up compressed files
+    for f in [compressed_gzip, compressed_bzip2, compressed_lz4, compressed_epic]:
+        try:
+            os.remove(f)
+        except OSError:
+            pass
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+
+
 
 
 
@@ -94,72 +144,118 @@ if __name__ == "__main__":
 # import psutil
 # import subprocess
 # from statistics import mean
-# import shutil
 # import os
+# import pandas as pd
 
-# input_file_txt = "test3.txt"
+# # --- Configuration ---
+# input_file_txt = "test4.txt"
 # compressed_epic = input_file_txt + ".bin"
 # compressed_gzip = input_file_txt + ".gz"
-# cpp_binary_compression = "./epic-v3.1"
+# epic_binary_compression = "./epic-v3.1"
 
-# def measure(command, label):
-#     print(f"\nRunning: {label}")
-#     start_time = time.time()
+# # --- Measurement Helper ---
+# def measure(command):
+#     """Run a command, returning (runtime_s, avg_memory_MB)."""
+#     start = time.time()
+#     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+#     pid = proc.pid
+#     mem_samples = []
 
-#     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-#     pid = process.pid
-#     mem_usage = []
-
-#     while process.poll() is None:
+#     while proc.poll() is None:
 #         try:
 #             p = psutil.Process(pid)
-#             mem_usage.append(p.memory_info().rss / 1024 / 1024)  # Convert bytes to MB
+#             mem_samples.append(p.memory_info().rss / (1024**2))
 #         except psutil.NoSuchProcess:
 #             break
 #         time.sleep(0.05)
 
-#     stdout, stderr = process.communicate()
-#     end_time = time.time()
-
-#     runtime = end_time - start_time
-#     average_memory = mean(mem_usage) if mem_usage else 0
-
-#     print(f"{label} finished.")
-#     print(f"Runtime: {runtime:.3f} seconds")
-#     print(f"Average Memory: {average_memory:.2f} MB")
-
-#     return runtime, average_memory
+#     proc.communicate()
+#     runtime = time.time() - start
+#     avg_mem = mean(mem_samples) if mem_samples else 0
+#     return runtime, avg_mem
 
 # def main():
+#     # EPIC compression
+#     epic_time, epic_mem = measure([
+#         epic_binary_compression, 
+#         input_file_txt, 
+#         "-c", 
+#         "-t", "1", 
+#         compressed_epic
+#     ])
+#     if not os.path.exists(compressed_epic):
+#         raise RuntimeError(f"EPIC output not found: {compressed_epic}")
 
-#     # # Ensure fresh input file for both methods
-#     # shutil.copyfile(input_file, "input_cpp.txt")
-#     # shutil.copyfile(input_file, "input_gzip.txt")
+#     # gzip compression
+#     gzip_time, gzip_mem = measure([
+#         "gzip", "-k", input_file_txt
+#     ])
+#     if not os.path.exists(compressed_gzip):
+#         raise RuntimeError(f"gzip output not found: {compressed_gzip}")
 
-#     # 1. Run C++ binary
-#     print("=== C++ Compression ===")
-#     measure([cpp_binary_compression, input_file_txt, "-c", "-t", "1", compressed_epic], "C++ Compression")
+#     # Compute sizes & factors
+#     orig_size = os.path.getsize(input_file_txt)
+#     epic_size = os.path.getsize(compressed_epic)
+#     gzip_size = os.path.getsize(compressed_gzip)
+#     orig_size_MB = round(os.path.getsize(input_file_txt) / (1024 ** 2), 3)
 
-#     # 2. Run gzip compression
-#     print("\n=== gzip Compression ===")
-#     measure(["gzip", "-k", input_file_txt], "gzip Compression")  # -k keeps original
+#     epic_factor = round(orig_size / epic_size, 3)
+#     gzip_factor = round(orig_size / gzip_size, 3)
 
-#     # 1) get sizes
-#     orig_size = os.path.getsize(input_file_txt)           # bytes
-#     epic_size = os.path.getsize(compressed_epic)          # bytes, after epic run
-#     gzip_size = os.path.getsize(compressed_gzip)          # bytes, after gzip run
+#     # Compute runtime and speedup
+#     gzip_t_over_epic = round(gzip_time / epic_time, 3)
 
-#     # 2) compute factors
-#     epic_factor = orig_size / epic_size
-#     gzip_factor = orig_size / gzip_size
+#     # Compute memory utilization performance
+#     gzip_mem_over_epic = round(gzip_mem / epic_mem, 3)
 
-#     # 3) compute percentages
-#     epic_pct   = (epic_size / orig_size) * 100
-#     gzip_pct   = (gzip_size / orig_size) * 100
+#     #### Collect results ###
 
-#     print(f"Original size: {orig_size:,} bytes")
-#     print(f"EPIC compressed size: {epic_size:,} bytes → factor={epic_factor:.2f}×, {epic_pct:.1f}%")
-#     print(f"gzip compressed size: {gzip_size:,} bytes → factor={gzip_factor:.2f}×, {gzip_pct:.1f}%")
+#     # Compression Ratio
+#     results_cr = [
+#         {
+#             "File Name": input_file_txt,
+#             "Original Size (MB)": orig_size_MB,
+#             "epic": epic_factor,
+#             "gzip": gzip_factor
+#         }
+#     ]
+
+#     # Compression Time
+#     results_c_time = [
+#         {
+#             "File Name": input_file_txt,
+#             "Original Size (MB)": orig_size_MB,
+#             "epic": round(epic_time, 3),
+#             "gzip/epic": gzip_t_over_epic
+#         }
+#     ]
+    
+#     # Memory Utilization
+#     results_mem_util = [
+#         {
+#             "File Name": input_file_txt,
+#             "Original Size (MB)": orig_size_MB,
+#             "epic (MB)": round(epic_mem, 3),
+#             "gzip/epic": gzip_mem_over_epic
+#         }
+#     ]
+
+#     ### Save to CSV files ###
+
+#     # Compression Ratio
+#     df = pd.DataFrame(results_cr)
+#     df.to_csv("cr_results.csv", index=False)
+#     print("Compression ratio (CR) results written to cr_results.csv")
+
+#     # Runtime and speedup
+#     df = pd.DataFrame(results_c_time)
+#     df.to_csv("c_time_results.csv", index=False)
+#     print("Runtime and speedup results written to c_time_results.csv")
+
+#     # Memory utilization
+#     df = pd.DataFrame(results_mem_util)
+#     df.to_csv("mem_results.csv", index=False)
+#     print("Memory utilization results written to mem_results.csv")
 
 #     # Clean up if needed
 #     if os.path.exists(compressed_gzip):
@@ -167,8 +263,6 @@ if __name__ == "__main__":
         
 #     if os.path.exists(compressed_epic):    
 #         os.remove(compressed_epic)
-    
-        
 
 # if __name__ == "__main__":
 #     main()

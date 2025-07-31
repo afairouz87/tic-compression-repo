@@ -1,0 +1,2 @@
+File Name,Original Size (MB),EPIC_time_s,gzip/EPIC_time,bzip2/EPIC_time,lz4/EPIC_time
+test4.txt,0.382,0.44,0.129,0.129,0.496
