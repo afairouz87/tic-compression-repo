@@ -1,11 +1,10 @@
 /*
 
-Title: Enhanced PIC (EPIC) compression
+Title: Original PIC (PIC) compression
 Author: Abbas A. Fairouz
-Version: 3.1
-Note: multi-threaded version
-Created: Apr. 8, 2025
-Updated: Apr. 19, 2025
+Version: 3.0
+Created: Aug. 1, 2025
+Updated: Aug. 1, 2025
 
 Description:
 * In this version:
@@ -34,12 +33,12 @@ https://www.kaggle.com/datasets/rtatman/english-word-frequency?resource=download
 - Byte Code 3: BC3
 
 0, 1, 2: reserved codes for the BC1
-BC1 range:       3         --> (2^7) - 1
-BC2 range:     (2^7)       --> (2^7) + (2^14) - 1
-BC3 range: (2^7) + (2^14)  --> (2^7) + (2^14) + (2^21) - 1
+BC1 range:       4         --> (2^6) - 1
+BC2 range:     (2^6)       --> (2^6) + (2^12) - 1
+BC3 range: (2^6) + (2^12)  --> (2^6) + (2^12) + (2^18) - 1
 
-BC2 offset: (2^7)
-BC3 offset: (2^7) + (2^14)
+BC2 offset: (2^6)
+BC3 offset: (2^6) + (2^12)
 
 *** Generate T0 ***
     Have reserved values:
@@ -65,7 +64,7 @@ Byte-n: last ASCII byte code
 */
 
 
-#include "epic-v3.1.h"
+#include "pic-v3.h"
 
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
@@ -88,6 +87,7 @@ string outputFileNameText = "output.txt";
 
 // Counters for debugging
 int specialCodeWordCounter = 0;
+int searchMatchCoun = 0;
 int lineNumber = 1;
 
 //
@@ -96,163 +96,99 @@ mutex fileMutex;
 // *********************************************
 //            Main Function
 // *********************************************
-int main(int argc, char *argv[])
-{
-    // int main() {
-
-    if (!(argc == 6 || argc == 7 || argc == 8) ||
-        !(string(argv[2]) == "-c" || string(argv[2]) == "-d" || string(argv[2]) == "-l" || string(argv[2]) == "-r") ||
-        string(argv[3]) != "-t")
-    {
-        cerr << "Flags:\n-c: compression\n-d: decompression\n-l: Lookup (Search)\n-r: Lookup-and-Replace (Search and Replace)\n"
-             << "Usage: " << argv[0] << " <input_file> -[c,d,l,r] -t <num_threads> <output_file> [\"<search_string>\"] [\"<replace_string>\"]\n"
-             << "Notes:\n"
-             << "** For -l and -r flags: <search_string> is used.\n"
-             << "** For -l flag: <output_file> is ignored\n"
-             << "** For -r flag: <replace_string> is used\n"
-             << "** For <search_string> and <replace_string>: You need to allocate them between double quotes \"\" \n"
-             << endl;
-
+int main(int argc, char* argv[]) {
+    if (argc < 4) {
+        cerr << "Usage: " << argv[0]
+             << " <input_file> -[c|d|l|r] <output_file> [search_string] [replace_string]\n";
         return 1;
     }
 
-    if(string(argv[2]) == "-l" && argc != 7)
-    {
-        cerr << "For -l flag, you need to add the search string.\n";
+    string inputFile  = argv[1];
+    string modeFlag   = argv[2];
+    string outputFile = argv[3];
+    string searchStr, replaceStr;
 
-        return 1;
+    if (modeFlag == "-l") {
+        if (argc != 5) {
+            cerr << "Lookup mode requires: <program> <input> -l <search_string> <output_file>\n";
+            return 1;
+        }
+        searchStr = argv[3];
+        outputFile = argv[4];
     }
-    if(string(argv[2]) == "-r" && argc != 8)
-    {
-        cerr << "For -r flag, you need to add the search string and the replace string.\n";
-
-        return 1;
+    else if (modeFlag == "-r") {
+        if (argc != 6) {
+            cerr << "Replace mode requires: <program> <input> -r <search_string> <replace_string> <output_file>\n";
+            return 1;
+        }
+        searchStr  = argv[3];
+        replaceStr = argv[4];
+        outputFile = argv[5];
     }
-
-    string inputFileName = argv[1];
-    string operationMode = argv[2];
-    string outputFileName = argv[5];
-    string searchString = "", replaceString = "";
-
-    if (argc == 7 || argc == 8)
-        searchString = argv[6];
-
-    if (argc == 8)
-        replaceString = argv[7];
-
-    int numThreads = 0;
-
-    try
-    {
-        numThreads = stoi(argv[4]);
-        if (numThreads <= 0)
-            throw invalid_argument("Number of threads must be positive");
+    else if (modeFlag == "-c" || modeFlag == "-d") {
+        if (argc != 4) {
+            cerr << "Mode " << modeFlag << " requires: <program> <input> " << modeFlag << " <output_file>\n";
+            return 1;
+        }
     }
-    catch (const invalid_argument &e)
-    {
-        cerr << "Invalid thread count: " << argv[4] << endl;
+    else {
+        cerr << "Unknown mode: " << modeFlag << "\n";
         return 1;
     }
 
-    // // Record the start time
-    // auto start = high_resolution_clock::now();
-
+    // Build dictionary once, depending on mode
     uint32_t numberOfWords = countLinesInFile(dictFilename);
     cout << "Number of lines in the dictionary file: " << numberOfWords << endl;
-
     dictMapCodeArray = new string[numberOfWords + 10]; // add an extra spaces
+    
+    // auto start = high_resolution_clock::now();
 
-    // **** TESTs ****
-    // int TMP_NUM = ONE_BYTE_BOUND-1;
-    // const int TWO_BYTE_MID = TMP_NUM << 7;
-    // cout << "Two byte mid = " << TWO_BYTE_MID << "bits = " << bitset<14> (TWO_BYTE_MID) << endl;
-    // ****************
-
-    if (operationMode == "-c") // compression operation flag
-    { 
-        // *** Compression ***
-        // Building the dictionary hash table for compression
-        cout << "Building the dictionary hash table for compression.." << endl;
-        if (Build_Dictionary_Table_Compression() == 0)
-            cout << "The dictionary hash table for compression has been built successfully." << endl;
-        else
-            cout << "Error in building the dictionary hash table!" << endl;
-
-        // Send the text file to multiple compression threads
-        if (splitAndProcessTextFile(inputFileName, outputFileName, numThreads) == 0)
-            cout << "The compression function is successful." << endl;
-        else
-            cout << "Error in running the compression function!" << endl;
-    } // compression operation flag
-    else if (operationMode == "-d") // decompression operation flag
-    { 
-        // *** Decompression ***
-        // Building the dictionary hash table for decompression
-        cout << "Building the dictionary hash table for decompression.." << endl;
-        if (Build_Dictionary_Table_Decompression() == 0)
-            cout << "The dictionary hash table for decompression has been built successfully." << endl;
-        else
-            cout << "Error in building the dictionary hash table!" << endl;
-
-        if (splitAndProcessBinaryFile(inputFileName, outputFileName, numThreads) == 0)
-            cout << "The decompression function is successful." << endl;
-        else
-            cout << "Error in running the decompression function!" << endl;
-    } // decompression operation flag
-    else if (operationMode == "-l") // lookup operation flag
-    { 
-        // Building the dictionary hash table for compressing the search string
-        cout << "Building the dictionary hash table for compression.." << endl;
-        if (Build_Dictionary_Table_Compression() == 0)
-            cout << "The dictionary hash table for compression has been built successfully." << endl;
-        else
-            cout << "Error in building the dictionary hash table!" << endl;
-
-        if (splitAndProcessBinaryFileForSearch(inputFileName, outputFileName, numThreads, searchString) == 0)
-            cout << "The lookup function is successful." << endl;
-        else
-            cout << "Error in running the lookup function!" << endl;
-    } // lookup operation flag
-    else if (operationMode == "-r") // lookup and replace operation flag
-    { 
-        // Building the dictionary hash table for compressing the search string
-        cout << "Building the dictionary hash table for compression.." << endl;
-        if (Build_Dictionary_Table_Compression() == 0)
-            cout << "The dictionary hash table for compression has been built successfully." << endl;
-        else
-            cout << "Error in building the dictionary hash table!" << endl;
-
-        if (splitAndProcessBinaryFileForSearchAndReplace(inputFileName, outputFileName, numThreads, searchString, replaceString) == 0)
-        //if (splitAndProcessBinaryFileWithReplacement(inputFileName, outputFileName, numThreads, searchString, replaceString) == 0)
-            cout << "The lookup function is successful." << endl;
-        else
-            cout << "Error in running the lookup function!" << endl;
-
-    } // lookup and replace operation flag
-    else
-    { // error
-        cerr << "Invalid operation: " << argv[2] << endl;
-        return 1;
+    if (modeFlag == "-c") {
+        cout << "Building compression dictionary...\n";
+        Build_Dictionary_Table_Compression();
+        cout << "Running compression...\n";
+        if (Compression_Function(inputFile, outputFile) != 0) {
+            cerr << "Compression failed\n";
+            return 1;
+        }
+    }
+    else if (modeFlag == "-d") {
+        cout << "Building decompression dictionary...\n";
+        Build_Dictionary_Table_Decompression();
+        cout << "Running decompression...\n";
+        if (Decompression_Function(inputFile, outputFile) != 0) {
+            cerr << "Decompression failed\n";
+            return 1;
+        }
+    }
+    else if (modeFlag == "-l") {
+        cout << "Building compression dictionary for lookup...\n";
+        Build_Dictionary_Table_Compression();
+        cout << "Running lookup...\n";
+        if (Lookup_Function(inputFile, outputFile, searchStr, searchMatchCoun) != 0) {
+            cerr << "Lookup failed\n";
+            return 1;
+        }
+    }
+    else if (modeFlag == "-r") {
+        cout << "Building compression dictionary for replace...\n";
+        Build_Dictionary_Table_Compression();
+        cout << "Running search-and-replace...\n";
+        if (Lookup_and_Replace_Function(inputFile, outputFile, searchStr, replaceStr, searchMatchCoun) != 0) {
+            cerr << "Search-and-replace failed\n";
+            return 1;
+        }
     }
 
-    // For testing ...
-    // printBinaryFile(outputFileNameBin);
 
-    // cout << "Sleep for one second..\n";
-    // this_thread::sleep_for(chrono::seconds(1));
-
-    delete[] dictMapCodeArray;
+     delete[] dictMapCodeArray;
     dictMapWord.clear();
     dictMapCodeArray = nullptr;
 
-    // // Record the end time
     // auto end = high_resolution_clock::now();
-
-    // // Calculate the duration in microseconds (or other units)
-    // auto duration = duration_cast<milliseconds>(end - start);
-
-    // cout << "Total execution time: " << duration.count() << " milliseconds" << endl;
-    // cout << "Number of special codeWords = " << specialCodeWordCounter << endl;
+    // auto duration = duration_cast<milliseconds>(end - start).count();
+    // cout << "Total execution time: " << duration << " ms\n";
+    cout << "Special code-words: " << specialCodeWordCounter << endl;
 
     return 0;
 } // main function
@@ -275,8 +211,7 @@ uint32_t Lookup_and_Replace_Function(
     const string &outputFileNameBin,
     string searchString,
     string replaceString,
-    int threadIndex,
-    vector<uint32_t> &results)
+    int &results)
 {
     ifstream inFile(inputFileNameBin, ios::binary);
     ofstream outFile(outputFileNameBin, ios::binary | ios::app);
@@ -382,7 +317,7 @@ uint32_t Lookup_and_Replace_Function(
 
     inFile.close();
     outFile.close();
-    results[threadIndex] = matchCount;
+    results = matchCount;
     return 0;
 }
 
@@ -399,8 +334,7 @@ uint32_t Lookup_Function(
     streampos start,
     streampos end,
     string searchString,
-    int threadIndex,
-    vector<uint32_t> &results)
+    int &results)
 {
     ifstream inFile(inputFileNameBin, ios::binary);
     if (!inFile)
@@ -500,7 +434,7 @@ uint32_t Lookup_Function(
     }
 
     inFile.close();
-    results[threadIndex] = matchCount;
+    results = matchCount;
     return 0;
 }
 
@@ -612,16 +546,17 @@ uint8_t Build_Dictionary_Table_Compression()
 // Version 2 (Stable)
 uint8_t Compression_Function(
     const string &inputFileText,
-    streampos start,
-    streampos end,
     const string &outputFileBin)
 {
-    ifstream inFile(inputFileText);
+    ifstream inFile(inputFileText, ios::ate);
     if (!inFile)
     {
         cerr << "Error opening file: " << inputFileText << endl;
         return -1;
     }
+
+    streampos start = 0, 
+              end = inFile.tellg();
 
     inFile.seekg(start);
     if (start > 0)
@@ -1003,15 +938,20 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
 // ---- Decompression Function ------
 
 // Version 3 (Stable)
-uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, streampos end, const string &outputFileNameText)
+uint8_t Decompression_Function(
+    const string &inputFileNameBin, 
+    const string &outputFileNameText)
 {
-    ifstream inFile(inputFileNameBin, ios::binary);
+    ifstream inFile(inputFileNameBin, ios::binary | ios::ate);
     ofstream outFile(outputFileNameText, ios::app);
     if (!inFile || !outFile)
     {
         cerr << "Error opening files for decompression." << endl;
         return -1;
     }
+
+    streampos start = 0, 
+              end = inFile.tellg();
 
     inFile.seekg(start);
     const size_t bufferSize = 4096;
@@ -1168,16 +1108,20 @@ string SPECIAL_CODE_WORD_READER(ifstream *filePtr)
         return "";
     }
 
-    // Decode the bytes into a string
-    string result;
-    for (size_t i = 0; i < bytes.size(); ++i)
-    {
-        uint8_t byte = bytes[i];
-        
-        result += static_cast<char>(byte); // Append to the string
+    string decodedString;
+
+    // Process remaining bytes two at a time
+    for (size_t i = 0; i < bytes.size(); i += 2) {
+        uint8_t highByte = (bytes[i] & 0b01111110) >> 1;  // Extract middle 6 bits
+        uint8_t lowByte = (bytes[i + 1] & 0b01111110) >> 1; // Extract middle 6 bits
+
+        // Combine high and low bytes to reconstruct the ASCII character
+        char originalChar = (highByte << 6) | lowByte;
+
+        decodedString += originalChar;
     }
 
-    return result;
+    return decodedString;
 }
 
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
@@ -1229,26 +1173,32 @@ string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
 
 /*
 'SPECIAL_CODE_GENERATOR' function:
-Generate
+Generate 
 */
-// vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input) {
-vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input)
-{
+//vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input) {
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input) {
     vector<uint8_t> result;
-
-    // Calculate the number of upcoming bytes (excluding the first byte)
-    uint8_t sizeByte = input.length();
-    // sizeByte = (sizeByte << 1) | 1; // Shift left by 1 and set the least significant bit to 1
-    result.push_back(sizeByte); // Add the size byte to the vector
-
-    // Process each character in the string
-    for (size_t i = 0; i < input.length(); ++i)
-    {
-        uint8_t byte = static_cast<uint8_t>(input[i]);
+    uint8_t numChars = static_cast<uint8_t>(input.length() * 2); // input.length() * 2 => each ASCII character is represented using two bytes
+    
+    // Encode the first byte: MSB = 1, LSB = 1, middle 6 bits = numChars
+    uint8_t firstByte = (0b10000001) | (numChars << 1);
+    result.push_back(firstByte);
+    
+    // Process each ASCII character into two bytes (high byte and low byte)
+    for (size_t i = 0; i < input.length(); ++i) {
+        uint8_t asciiVal = static_cast<uint8_t>(input[i]);
+        uint8_t highByte = ((asciiVal >> 6) & 0x03) << 1 | 1; // Extract top 2 bits, LSB = 1
+        uint8_t lowByte = ((asciiVal & 0x3F) << 1);           // Extract bottom 6 bits
         
-        result.push_back(byte);
+        // Set LSB of lowByte to 1 if not the last character, else set to 0
+        if (i < input.length() - 1) {
+            lowByte |= 1;
+        }
+        
+        result.push_back(highByte);
+        result.push_back(lowByte);
     }
-
+    
     return result;
 }
 
@@ -1467,342 +1417,342 @@ uint32_t countLinesInFile(const string &filePath)
 // -------- Compression ----------
 // **** Text to codeWord (Binary) File ****
 
-// Function to merge binary files in order
-void mergeBinaryFiles(const vector<string> &tempFiles, const string &outputFile)
-{
-    lock_guard<mutex> lock(fileMutex);
-    ofstream outFile(outputFile, ios::binary);
-    if (!outFile)
-    {
-        cerr << "Error creating merged output file: " << outputFile << endl;
-        return;
-    }
+// // Function to merge binary files in order
+// void mergeBinaryFiles(const vector<string> &tempFiles, const string &outputFile)
+// {
+//     lock_guard<mutex> lock(fileMutex);
+//     ofstream outFile(outputFile, ios::binary);
+//     if (!outFile)
+//     {
+//         cerr << "Error creating merged output file: " << outputFile << endl;
+//         return;
+//     }
 
-    for (const auto &tempFile : tempFiles)
-    {
-        ifstream inFile(tempFile, ios::binary);
-        if (!inFile)
-        {
-            cerr << "Error opening temp file: " << tempFile << endl;
-            continue;
-        }
+//     for (const auto &tempFile : tempFiles)
+//     {
+//         ifstream inFile(tempFile, ios::binary);
+//         if (!inFile)
+//         {
+//             cerr << "Error opening temp file: " << tempFile << endl;
+//             continue;
+//         }
 
-        outFile << inFile.rdbuf(); // Append to final output
-        inFile.close();
-        std::remove(tempFile.c_str()); // Delete and remove temporary file
-    }
-    outFile.close();
-    cout << "Binary files merged into " << outputFile << endl;
-}
+//         outFile << inFile.rdbuf(); // Append to final output
+//         inFile.close();
+//         std::remove(tempFile.c_str()); // Delete and remove temporary file
+//     }
+//     outFile.close();
+//     cout << "Binary files merged into " << outputFile << endl;
+// }
 
-// Function to split a text file into contiguous chunks and process them
-uint8_t splitAndProcessTextFile(const string &inputFile, const string &outputFile, int numThreads)
-{
+// // Function to split a text file into contiguous chunks and process them
+// uint8_t splitAndProcessTextFile(const string &inputFile, const string &outputFile, int numThreads)
+// {
 
-    ifstream inFile(inputFile);
-    if (!inFile)
-    {
-        cerr << "Error opening input file: " << inputFile << endl;
-        return -1;
-    }
+//     ifstream inFile(inputFile);
+//     if (!inFile)
+//     {
+//         cerr << "Error opening input file: " << inputFile << endl;
+//         return -1;
+//     }
 
-    inFile.seekg(0, ios::end);
-    streampos fileSize = inFile.tellg();
-    streampos chunkSize = fileSize / numThreads;
+//     inFile.seekg(0, ios::end);
+//     streampos fileSize = inFile.tellg();
+//     streampos chunkSize = fileSize / numThreads;
 
-    vector<thread> threads;
-    vector<string> tempFiles;
-    streampos start, end;
+//     vector<thread> threads;
+//     vector<string> tempFiles;
+//     streampos start, end;
 
-    for (int i = 0; i < numThreads; i++)
-    {
+//     for (int i = 0; i < numThreads; i++)
+//     {
         
-        start = i * chunkSize;
-        end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize);
+//         start = i * chunkSize;
+//         end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize);
 
-        // Adjust end position to the nearest newline
-        if (i != numThreads - 1)
-        {
-            ifstream tempFile(inputFile);
-            tempFile.seekg(end);
-            string temp;
-            getline(tempFile, temp); // Move past partial line
-            end = tempFile.tellg();
-            tempFile.close();
-        }
+//         // Adjust end position to the nearest newline
+//         if (i != numThreads - 1)
+//         {
+//             ifstream tempFile(inputFile);
+//             tempFile.seekg(end);
+//             string temp;
+//             getline(tempFile, temp); // Move past partial line
+//             end = tempFile.tellg();
+//             tempFile.close();
+//         }
 
-        string chunkFile = "chunk_" + to_string(i) + ".bin";
-        tempFiles.push_back(chunkFile);
-        threads.emplace_back(Compression_Function, inputFile, start, end, chunkFile);
-    }
+//         string chunkFile = "chunk_" + to_string(i) + ".bin";
+//         tempFiles.push_back(chunkFile);
+//         threads.emplace_back(Compression_Function, inputFile, start, end, chunkFile);
+//     }
 
-    for (auto &t : threads)
-    {
-        t.join();
-    }
+//     for (auto &t : threads)
+//     {
+//         t.join();
+//     }
 
-    mergeBinaryFiles(tempFiles, outputFile);
-    cout << "Encoding completed and merged into " << outputFile << endl;
+//     mergeBinaryFiles(tempFiles, outputFile);
+//     cout << "Encoding completed and merged into " << outputFile << endl;
 
-    return 0;
-}
+//     return 0;
+// }
 
-// -------- Decompression ----------
-// **** codeWord (Binary) to Text File ****
+// // -------- Decompression ----------
+// // **** codeWord (Binary) to Text File ****
 
-// Function to merge text files in order
-void mergeTextFiles(const vector<string> &tempFiles, const string &outputFile)
-{
-    lock_guard<mutex> lock(fileMutex); // Lock before merging files
-    ofstream outFile(outputFile);
-    if (!outFile)
-    {
-        cerr << "Error creating merged output file: " << outputFile << endl;
-        return;
-    }
+// // Function to merge text files in order
+// void mergeTextFiles(const vector<string> &tempFiles, const string &outputFile)
+// {
+//     lock_guard<mutex> lock(fileMutex); // Lock before merging files
+//     ofstream outFile(outputFile);
+//     if (!outFile)
+//     {
+//         cerr << "Error creating merged output file: " << outputFile << endl;
+//         return;
+//     }
 
-    for (const auto &tempFile : tempFiles)
-    {
-        ifstream inFile(tempFile);
-        if (!inFile)
-        {
-            cerr << "Error opening temp file: " << tempFile << endl;
-            continue;
-        }
+//     for (const auto &tempFile : tempFiles)
+//     {
+//         ifstream inFile(tempFile);
+//         if (!inFile)
+//         {
+//             cerr << "Error opening temp file: " << tempFile << endl;
+//             continue;
+//         }
 
-        outFile << inFile.rdbuf(); // Append to final output
-        inFile.close();
-        std::remove(tempFile.c_str()); // Delete and remove temporary file
-    }
-    outFile.close();
-    cout << "Text files merged into " << outputFile << endl;
-}
+//         outFile << inFile.rdbuf(); // Append to final output
+//         inFile.close();
+//         std::remove(tempFile.c_str()); // Delete and remove temporary file
+//     }
+//     outFile.close();
+//     cout << "Text files merged into " << outputFile << endl;
+// }
 
-// Function to split a binary file into chunks and process them
-uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputFile, int numThreads)
-{
-    ifstream inFile(inputFile, ios::binary);
-    if (!inFile)
-    {
-        cerr << "Error opening input file: " << inputFile << endl;
-        return -1;
-    }
+// // Function to split a binary file into chunks and process them
+// uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputFile, int numThreads)
+// {
+//     ifstream inFile(inputFile, ios::binary);
+//     if (!inFile)
+//     {
+//         cerr << "Error opening input file: " << inputFile << endl;
+//         return -1;
+//     }
 
-    inFile.seekg(0, ios::end);
-    streampos fileSize = inFile.tellg();
-    streampos chunkSize = fileSize / numThreads;
+//     inFile.seekg(0, ios::end);
+//     streampos fileSize = inFile.tellg();
+//     streampos chunkSize = fileSize / numThreads;
 
-    vector<thread> threads;
-    vector<string> tempFiles;
-    streampos start, end;
+//     vector<thread> threads;
+//     vector<string> tempFiles;
+//     streampos start, end;
 
-    for (int i = 0; i < numThreads; i++)
-    {
-        // if (i == 0)
-        //     start = 0;
-        // else
-        //     start = end+1;
+//     for (int i = 0; i < numThreads; i++)
+//     {
+//         // if (i == 0)
+//         //     start = 0;
+//         // else
+//         //     start = end+1;
 
-        // // end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize); // tmp - Abbas
-        // end = (i == numThreads - 1) ? fileSize : streampos((i+1) * chunkSize);
+//         // // end = (i == numThreads - 1) ? fileSize : streampos((i + 1) * chunkSize); // tmp - Abbas
+//         // end = (i == numThreads - 1) ? fileSize : streampos((i+1) * chunkSize);
 
-        if (i == 0)
-            start = 0;
-        else
-            start = end;
-        end = (i == numThreads - 1) ? fileSize : streampos(start + chunkSize);
+//         if (i == 0)
+//             start = 0;
+//         else
+//             start = end;
+//         end = (i == numThreads - 1) ? fileSize : streampos(start + chunkSize);
 
-        // Adjust end position to the nearest newline (0x02) boundary
-        if (i != numThreads - 1)
-        {
-            ifstream tempFile(inputFile, ios::binary);
-            tempFile.seekg(end);
-            char c;
-            while (tempFile.get(c))
-            {
-                if (c == 0x02 || c == 0x00)
-                    break; // Stop at newline or space
-            }
-            end = tempFile.tellg();
-            tempFile.close();
-        }
+//         // Adjust end position to the nearest newline (0x02) boundary
+//         if (i != numThreads - 1)
+//         {
+//             ifstream tempFile(inputFile, ios::binary);
+//             tempFile.seekg(end);
+//             char c;
+//             while (tempFile.get(c))
+//             {
+//                 if (c == 0x02 || c == 0x00)
+//                     break; // Stop at newline or space
+//             }
+//             end = tempFile.tellg();
+//             tempFile.close();
+//         }
 
-        string chunkFile = "chunk_" + to_string(i) + ".txt";
-        tempFiles.push_back(chunkFile);
-        threads.emplace_back(Decompression_Function, inputFile, start, end, chunkFile);
-    }
+//         string chunkFile = "chunk_" + to_string(i) + ".txt";
+//         tempFiles.push_back(chunkFile);
+//         threads.emplace_back(Decompression_Function, inputFile, start, end, chunkFile);
+//     }
 
-    for (auto &t : threads)
-    {
-        t.join();
-    }
+//     for (auto &t : threads)
+//     {
+//         t.join();
+//     }
 
-    mergeTextFiles(tempFiles, outputFile);
-    cout << "Decoding completed and merged into " << outputFile << endl;
+//     mergeTextFiles(tempFiles, outputFile);
+//     cout << "Decoding completed and merged into " << outputFile << endl;
 
-    return 0;
-}
+//     return 0;
+// }
 
 //-------------------------------------------------------------------------------
 
 
-// Version 2 - Search 
-uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string &outputFile, int numThreads, string searchString)
-{
-    ifstream inFile(inputFile, ios::binary);
-    if (!inFile)
-    {
-        cerr << "Error opening input file: " << inputFile << endl;
-        return -1;
-    }
+// // Version 2 - Search 
+// uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string &outputFile, int numThreads, string searchString)
+// {
+//     ifstream inFile(inputFile, ios::binary);
+//     if (!inFile)
+//     {
+//         cerr << "Error opening input file: " << inputFile << endl;
+//         return -1;
+//     }
 
-    inFile.seekg(0, ios::end);
-    streamoff fileSize = static_cast<streamoff>(inFile.tellg());
-    streamoff chunkSize = fileSize / numThreads;
+//     inFile.seekg(0, ios::end);
+//     streamoff fileSize = static_cast<streamoff>(inFile.tellg());
+//     streamoff chunkSize = fileSize / numThreads;
 
-    vector<thread> threads;
-    streampos start = 0, end = 0;
+//     vector<thread> threads;
+//     streampos start = 0, end = 0;
 
-    vector<streampos> adjustedEnds(numThreads);
-    vector<uint32_t> countMatchVector(numThreads, 0);
+//     vector<streampos> adjustedEnds(numThreads);
+//     vector<uint32_t> countMatchVector(numThreads, 0);
 
-    // First pass: calculate adjusted end boundaries to prevent overlap
-    for (int i = 0; i < numThreads; i++)
-    {
-        streamoff roughStart = i * chunkSize;
-        streamoff roughEnd = (i == numThreads - 1) ? fileSize : (i + 1) * chunkSize;
+//     // First pass: calculate adjusted end boundaries to prevent overlap
+//     for (int i = 0; i < numThreads; i++)
+//     {
+//         streamoff roughStart = i * chunkSize;
+//         streamoff roughEnd = (i == numThreads - 1) ? fileSize : (i + 1) * chunkSize;
 
-        streampos adjustedEnd = static_cast<streampos>(roughEnd);
+//         streampos adjustedEnd = static_cast<streampos>(roughEnd);
 
-        if (i != numThreads - 1)
-        {
-            ifstream tempFile(inputFile, ios::binary);
-            tempFile.seekg(adjustedEnd);
-            char c;
-            while (tempFile.get(c))
-            {
-                if (c == 0x02 || c == 0x00)
-                {
-                    adjustedEnd = tempFile.tellg();
-                    break;
-                }
-            }
+//         if (i != numThreads - 1)
+//         {
+//             ifstream tempFile(inputFile, ios::binary);
+//             tempFile.seekg(adjustedEnd);
+//             char c;
+//             while (tempFile.get(c))
+//             {
+//                 if (c == 0x02 || c == 0x00)
+//                 {
+//                     adjustedEnd = tempFile.tellg();
+//                     break;
+//                 }
+//             }
 
-            tempFile.close();
-        }
+//             tempFile.close();
+//         }
 
-        adjustedEnds[i] = adjustedEnd;
-    }
+//         adjustedEnds[i] = adjustedEnd;
+//     }
 
-    // Second pass: spawn threads with safe, non-overlapping boundaries
-    for (int i = 0; i < numThreads; i++)
-    {
-        start = (i == 0) ? static_cast<streampos>(0) : adjustedEnds[i - 1];
-        end = adjustedEnds[i];
+//     // Second pass: spawn threads with safe, non-overlapping boundaries
+//     for (int i = 0; i < numThreads; i++)
+//     {
+//         start = (i == 0) ? static_cast<streampos>(0) : adjustedEnds[i - 1];
+//         end = adjustedEnds[i];
 
-        threads.emplace_back(Lookup_Function, inputFile, start, end, searchString, i, ref(countMatchVector));
-    }
+//         threads.emplace_back(Lookup_Function, inputFile, start, end, searchString, i, ref(countMatchVector));
+//     }
 
-    for (auto &t : threads)
-    {
-        t.join();
-    }
+//     for (auto &t : threads)
+//     {
+//         t.join();
+//     }
 
-    uint32_t sumAllMatch = 0;
-    for (int i = 0; i < numThreads; i++)
-    {
-        sumAllMatch += countMatchVector[i];
-        cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
-    }
+//     uint32_t sumAllMatch = 0;
+//     for (int i = 0; i < numThreads; i++)
+//     {
+//         sumAllMatch += countMatchVector[i];
+//         cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
+//     }
 
-    cout << "Total matched values = " << sumAllMatch << endl;
-    //cout << "Lookup operation has been completed." << endl;
+//     cout << "Total matched values = " << sumAllMatch << endl;
+//     //cout << "Lookup operation has been completed." << endl;
 
-    return 0;
-}
+//     return 0;
+// }
 
 
 
-// ----------------------------------------------------------
+// // ----------------------------------------------------------
 
-// // Version 1 - Replace
-// // Function to split a binary file into chunks and process them
-uint8_t splitAndProcessBinaryFileForSearchAndReplace(
-    const string &inputFile, 
-    const string &outputFile, 
-    int numThreads, 
-    string searchString, 
-    string replaceString
-)
-{
-    ifstream inFile(inputFile, ios::binary);
-    if (!inFile)
-    {
-        cerr << "Error opening input file: " << inputFile << endl;
-        return -1;
-    }
+// // // Version 1 - Replace
+// // // Function to split a binary file into chunks and process them
+// uint8_t splitAndProcessBinaryFileForSearchAndReplace(
+//     const string &inputFile, 
+//     const string &outputFile, 
+//     int numThreads, 
+//     string searchString, 
+//     string replaceString
+// )
+// {
+//     ifstream inFile(inputFile, ios::binary);
+//     if (!inFile)
+//     {
+//         cerr << "Error opening input file: " << inputFile << endl;
+//         return -1;
+//     }
 
-    inFile.seekg(0, ios::end);
-    streampos fileSize = inFile.tellg();
-    streampos chunkSize = fileSize / numThreads;
+//     inFile.seekg(0, ios::end);
+//     streampos fileSize = inFile.tellg();
+//     streampos chunkSize = fileSize / numThreads;
 
-    vector<thread> threads;
-    vector<string> tempFiles;
-    streampos start=0, end=0;
+//     vector<thread> threads;
+//     vector<string> tempFiles;
+//     streampos start=0, end=0;
 
-    vector<uint32_t> countMatchVector(numThreads, 0);
-    vector<char> preservedDelimiters(numThreads); // NEW
+//     vector<uint32_t> countMatchVector(numThreads, 0);
+//     vector<char> preservedDelimiters(numThreads); // NEW
 
-    for (int i = 0; i < numThreads; i++)
-    {
-        cout << "Initial value of count[" << i << "] = " << countMatchVector[i] << endl;
-    }
+//     for (int i = 0; i < numThreads; i++)
+//     {
+//         cout << "Initial value of count[" << i << "] = " << countMatchVector[i] << endl;
+//     }
 
-    for (int i = 0; i < numThreads; i++)
-    {
+//     for (int i = 0; i < numThreads; i++)
+//     {
                
-        start = end;
-        end = (i == numThreads - 1) ? fileSize : streampos(start + chunkSize);
+//         start = end;
+//         end = (i == numThreads - 1) ? fileSize : streampos(start + chunkSize);
 
-        // Adjust end position to the nearest newline (0x02) boundary
-        if (i != numThreads - 1)
-        {
-            ifstream tempFile(inputFile, ios::binary);
-            tempFile.seekg(end);
-            char c;
-            while (tempFile.get(c))
-            {
-                if (c == 0x02 || c == 0x00)
-                    break; // Stop at newline or space
-            }
-            end = tempFile.tellg();
-            tempFile.close();
-        }
+//         // Adjust end position to the nearest newline (0x02) boundary
+//         if (i != numThreads - 1)
+//         {
+//             ifstream tempFile(inputFile, ios::binary);
+//             tempFile.seekg(end);
+//             char c;
+//             while (tempFile.get(c))
+//             {
+//                 if (c == 0x02 || c == 0x00)
+//                     break; // Stop at newline or space
+//             }
+//             end = tempFile.tellg();
+//             tempFile.close();
+//         }
 
-        string chunkFile = "chunk_" + to_string(i) + ".bin";
-        tempFiles.push_back(chunkFile);
-        threads.emplace_back(Lookup_and_Replace_Function, inputFile, start, end, chunkFile, searchString, replaceString, i, ref(countMatchVector)); // 'i' is the threadIndex
+//         string chunkFile = "chunk_" + to_string(i) + ".bin";
+//         tempFiles.push_back(chunkFile);
+//         threads.emplace_back(Lookup_and_Replace_Function, inputFile, start, end, chunkFile, searchString, replaceString, i, ref(countMatchVector)); // 'i' is the threadIndex
 
-        // cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
-    }
+//         // cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
+//     }
 
-    for (auto &t : threads)
-    {
-        t.join();
-    }
+//     for (auto &t : threads)
+//     {
+//         t.join();
+//     }
 
-    uint32_t sumAllMatch = 0;
-    for (int i = 0; i < numThreads; i++) // summation of all matched values from all threads
-    {
-        sumAllMatch += countMatchVector[i];
-        cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
-    }
+//     uint32_t sumAllMatch = 0;
+//     for (int i = 0; i < numThreads; i++) // summation of all matched values from all threads
+//     {
+//         sumAllMatch += countMatchVector[i];
+//         cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
+//     }
 
-    cout << "Total matched values = " << sumAllMatch << endl;
+//     cout << "Total matched values = " << sumAllMatch << endl;
 
-    mergeBinaryFiles(tempFiles, outputFile);
-    cout << "Lookup completed and merged into " << outputFile << endl;
-    cout << "Lookup operation has been completed." << endl;
+//     mergeBinaryFiles(tempFiles, outputFile);
+//     cout << "Lookup completed and merged into " << outputFile << endl;
+//     cout << "Lookup operation has been completed." << endl;
 
-    return 0;
-}
+//     return 0;
+// }

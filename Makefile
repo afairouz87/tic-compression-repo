@@ -3,16 +3,16 @@ CXX = g++
 # Compiler flags
 CXXFLAGS = -std=c++11
 # Target executables
-TARGETS = pic-v2 epic-v3.1
+TARGETS = pic-v3.1 epic-v3.1
 # Source files
-SOURCES = pic-v2.cpp epic-v3.1.cpp
+SOURCES = pic-v3.1.cpp epic-v3.1.cpp
 
 # Default target builds all executables
 all: $(TARGETS)
 
 # Rule to build each target from its corresponding source
-pic: pic-v2.cpp
-	$(CXX) $(CXXFLAGS) pic-v2.cpp -o pic-v2
+pic: pic-v3.1.cpp
+	$(CXX) $(CXXFLAGS) pic-v3.1.cpp -o pic-v3.1
 
 epic: epic-v3.1.cpp
 	$(CXX) $(CXXFLAGS) epic-v3.1.cpp -o epic-v3.1

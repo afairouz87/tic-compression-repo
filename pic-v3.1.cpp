@@ -65,7 +65,7 @@ Byte-n: last ASCII byte code
 */
 
 
-#include "epic-v3.1.h"
+#include "pic-v3.1.h"
 
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
@@ -1168,16 +1168,20 @@ string SPECIAL_CODE_WORD_READER(ifstream *filePtr)
         return "";
     }
 
-    // Decode the bytes into a string
-    string result;
-    for (size_t i = 0; i < bytes.size(); ++i)
-    {
-        uint8_t byte = bytes[i];
-        
-        result += static_cast<char>(byte); // Append to the string
+    string decodedString;
+
+    // Process remaining bytes two at a time
+    for (size_t i = 0; i < bytes.size(); i += 2) {
+        uint8_t highByte = (bytes[i] & 0b01111110) >> 1;  // Extract middle 6 bits
+        uint8_t lowByte = (bytes[i + 1] & 0b01111110) >> 1; // Extract middle 6 bits
+
+        // Combine high and low bytes to reconstruct the ASCII character
+        char originalChar = (highByte << 6) | lowByte;
+
+        decodedString += originalChar;
     }
 
-    return result;
+    return decodedString;
 }
 
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
@@ -1235,20 +1239,27 @@ Generate
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input)
 {
     vector<uint8_t> result;
-
-    // Calculate the number of upcoming bytes (excluding the first byte)
-    uint8_t sizeByte = input.length();
-    // sizeByte = (sizeByte << 1) | 1; // Shift left by 1 and set the least significant bit to 1
-    result.push_back(sizeByte); // Add the size byte to the vector
-
-    // Process each character in the string
-    for (size_t i = 0; i < input.length(); ++i)
-    {
-        uint8_t byte = static_cast<uint8_t>(input[i]);
+    uint8_t numChars = static_cast<uint8_t>(input.length() * 2); // input.length() * 2 => each ASCII character is represented using two bytes
+    
+    // Encode the first byte: MSB = 1, LSB = 1, middle 6 bits = numChars
+    uint8_t firstByte = (0b10000001) | (numChars << 1);
+    result.push_back(firstByte);
+    
+    // Process each ASCII character into two bytes (high byte and low byte)
+    for (size_t i = 0; i < input.length(); ++i) {
+        uint8_t asciiVal = static_cast<uint8_t>(input[i]);
+        uint8_t highByte = ((asciiVal >> 6) & 0x03) << 1 | 1; // Extract top 2 bits, LSB = 1
+        uint8_t lowByte = ((asciiVal & 0x3F) << 1);           // Extract bottom 6 bits
         
-        result.push_back(byte);
+        // Set LSB of lowByte to 1 if not the last character, else set to 0
+        if (i < input.length() - 1) {
+            lowByte |= 1;
+        }
+        
+        result.push_back(highByte);
+        result.push_back(lowByte);
     }
-
+    
     return result;
 }
 

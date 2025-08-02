@@ -1,2 +1,2 @@
-File Name,Original Size (MB),EPIC_time_s,gzip/EPIC_time,bzip2/EPIC_time,lz4/EPIC_time
-test4.txt,0.382,0.44,0.129,0.129,0.496
+File Name,Original Size (MB),TIC time (s),PIC/TIC,gzip/TIC,bzip2/TIC,lz4/TIC
+test4.txt,0.382,0.598,1.008,0.087,0.095,0.094
