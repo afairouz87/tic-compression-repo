@@ -51,6 +51,11 @@ the reserved codeWords (space, newline, nextCapital).
 
 uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
 
+
+bool isPunctModified(char c);
+
+//********************************** 
+
 uint8_t Build_Dictionary_Table_Compression();
 uint8_t Build_Dictionary_Table_Decompression();
 vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input);
@@ -120,3 +125,5 @@ uint32_t readCodeWords(vector<uint8_t> bytes);
 uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count);
 
 uint32_t countLinesInFile(const string &filePath); // read the number of words in the dictionary 
+
+
