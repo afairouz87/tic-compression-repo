@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 
+=======
+>>>>>>> d26d2008968ff2dfa2223e144344dd686fb6bc61
 _The_
 BLUE CASTLE
 
