@@ -268,7 +268,6 @@ int main(int argc, char *argv[])
 --------------------------
 */
 
-<<<<<<< HEAD
 // bool isPunctModified(char c){
 //     if(
 //         c == '!' ||
@@ -323,8 +322,6 @@ Reached here..
 We still have an issue with this function1!!!
 
 */
-=======
->>>>>>> d26d2008968ff2dfa2223e144344dd686fb6bc61
 
 // ------------------------------------------------------
 // ***** Lookup_and_Replace_Function ***********
@@ -770,7 +767,6 @@ uint8_t Compression_Function(
 
 
 
-<<<<<<< HEAD
 // // Version 2 (Stable)
 // uint8_t Compression_Function(
 //     const string &inputFileText,
@@ -972,8 +968,6 @@ uint8_t Compression_Function(
 
 
 
-=======
->>>>>>> d26d2008968ff2dfa2223e144344dd686fb6bc61
 // -------------------------------------------------
 
 
@@ -1276,7 +1270,6 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
 // ----------------------------------
 // ---- Decompression Function ------
 
-<<<<<<< HEAD
 
 // Version 4 (??)
 // uint8_t Decompression_Function(
@@ -1371,8 +1364,6 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
 
 
 
-=======
->>>>>>> d26d2008968ff2dfa2223e144344dd686fb6bc61
 // Version 3 (Stable)
 uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, streampos end, const string &outputFileNameText)
 {
@@ -1922,23 +1913,10 @@ uint8_t splitAndProcessTextFile(const string &inputFile, const string &outputFil
 
     uint32_t currentStartLine = 0;
 
-<<<<<<< HEAD
     for (int i = 0; i < numThreads; i++) {
         uint32_t myLines = linesPerThread + (i < remainder ? 1 : 0);  // distribute remainder
         uint32_t myStartLine = currentStartLine;
         uint32_t myEndLine = myStartLine + myLines;
-=======
-        // Adjust end position to the nearest newline
-        if (i != numThreads - 1)
-        {
-            ifstream tempFile(inputFile);
-            tempFile.seekg(end);
-            string temp;
-            getline(tempFile, temp); // Move past partial line
-            end = tempFile.tellg();
-            tempFile.close();
-        }
->>>>>>> d26d2008968ff2dfa2223e144344dd686fb6bc61
 
         string chunkFile = "chunk_" + to_string(i) + ".bin";
         tempFiles.push_back(chunkFile);
