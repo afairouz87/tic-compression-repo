@@ -1363,17 +1363,17 @@ vector<uint8_t> FOUR_BYTE_CODE_GENERATOR(uint32_t input)
     byte1 = Shift_Left_with_One_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte1);
 
-    input_shift1 = Shift_Right_Six_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    input_shift1 = Shift_Right_Six_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 6 positions
     byte2 = Mask_Single_Byte(input_shift1);            // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
     byte2 = Shift_Left_with_One_Inserted(byte2);       // shift 'byte2' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte2);
 
-    input_shitf2 = Shift_Right_Six_Positions(input_shift1); // shift 'DICT_ORDER_NUM' to the right by 7 positions
-    byte3 = Mask_Single_Byte(input_shitf2); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    input_shitf2 = Shift_Right_Six_Positions(input_shift1); // shift 'DICT_ORDER_NUM' to the right by 6 positions
+    byte3 = Mask_Single_Byte(input_shitf2); // shift 'DICT_ORDER_NUM' to the right by 6 positions
     byte3 = Shift_Left_with_One_Inserted(byte3);      // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
     codeWord.push_back(byte3);
 
-    byte4 = Shift_Right_Six_Positions(input_shitf2); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    byte4 = Shift_Right_Six_Positions(input_shitf2); // shift 'DICT_ORDER_NUM' to the right by 6 positions
     byte4 = Shift_Left_with_Zero_Inserted(byte4);      // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
     codeWord.push_back(byte4);
 

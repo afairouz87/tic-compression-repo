@@ -49,13 +49,14 @@ the reserved codeWords (space, newline, nextCapital).
 #define FOUR_BYTE_BOUND 17043520 // = ( pow(2,6) + pow(2,12) + pow(2,18) + pow(2,24) )
 
 
-uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
+uint32_t MASK_BYTE = 0x0000003f; // Mask value for the least significant byte (LSB) of 6 bits only
 
 uint8_t Build_Dictionary_Table_Compression();
 uint8_t Build_Dictionary_Table_Decompression();
 vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
+vector<uint8_t> FOUR_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes);
 string SPECIAL_CODE_WORD_READER(ifstream *filePtr);
@@ -66,7 +67,9 @@ string SPECIAL_CODE_WORD_READER(ifstream *filePtr);
 uint8_t Mask_Single_Byte(uint32_t number);
 uint32_t Shift_Left_with_One_Inserted(uint32_t number);
 uint32_t Shift_Left_with_Zero_Inserted(uint32_t number);
+uint32_t Shift_Right_Six_Positions(uint32_t number);
 uint32_t Shift_Right_Seven_Positions(uint32_t number);
+
 
 uint8_t Compression_Function(const string& inputFile, streampos start, streampos end, const string& outputFile);
 uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameText);
