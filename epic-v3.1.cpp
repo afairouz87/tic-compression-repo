@@ -1388,6 +1388,9 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
 
     while (currentPos < end && inFile)
     {
+        inFile.clear(); // Clear any EOF/failure flags before seeking
+        inFile.seekg(currentPos); // roll back to current position in case of a failure of buffer read
+
         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
         inFile.read(buffer, bytesToRead);
         size_t bytesRead = inFile.gcount();
@@ -1415,6 +1418,7 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
         for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
         {
             uint8_t byte = static_cast<uint8_t>(buffer[i]);
+            const uint8_t MAX_SPECIAL_LENGTH = 64; // Special Code-Word Limit
 
             nextByte = byte % 2;
             byte >>= 1;
@@ -1444,22 +1448,43 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
                 else if (finalSerial == NEXT_SPECIAL_CODE)
                 {
                     word.clear();
+                    //size_t start_i = i; // Save current position for full rollback
 
                     // Safe check: ensure we can read length
-                    if (i + 1 >= bytesRead) break;
+                    if (i + 1 >= bytesRead) {
+                        //cerr << "Error - NEXT_SPECIAL_CODE: i + 1 >= bytesRead\nThe number if bytes of Special code word is incomplete\n.";
+                        // Roll back and break
+                        currentPos--;
+                        break;
+                    }
                     uint8_t numChar = static_cast<uint8_t>(buffer[++i]);
                     currentPos++;
 
+                    if (numChar > MAX_SPECIAL_LENGTH) {
+                        cerr << "Error - NEXT_SPECIAL_CODE: numChar too large (" << (int)numChar << ")\n";
+                        currentPos -= 2;
+                        exit(1);
+                        // break;
+                    }
+
                     // Safe check: ensure full special word fits in buffer
-                    if (i + numChar >= bytesRead)
+                    if ((i + numChar) >= bytesRead)
                     {
-                        cerr << "Error: Special code word incomplete at buffer edge.\n";
+                        cerr << "Error - NEXT_SPECIAL_CODE: i + numChar >= bytesRead\nSpecial code word incomplete at buffer edge.\n";
+                        // Roll back and break
+                        currentPos -= 2;
                         break;
                     }
 
                     for (uint8_t j = 0; j < numChar; ++j)
                     {
-                        word += static_cast<char>(buffer[++i]);
+                        try{
+                            word += static_cast<char>(buffer[++i]);
+                        }
+                        catch (const std::length_error& e) {
+                            cerr << "Caught std::length_error: " << e.what() << std::endl;
+                            exit(1);
+                        }
                         currentPos++;
                     }
 
@@ -2122,87 +2147,87 @@ void mergeTextFiles(const vector<string> &tempFiles, const string &outputFile)
 
 // Function to split a binary file into chunks and process them
 
-// Version 3
-uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputFile, int numThreads)
-{
-    ifstream inFile(inputFile, ios::binary);
-    if (!inFile)
-    {
-        cerr << "Error opening input file: " << inputFile << endl;
-        return -1;
-    }
+// // Version 3
+// uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputFile, int numThreads)
+// {
+//     ifstream inFile(inputFile, ios::binary);
+//     if (!inFile)
+//     {
+//         cerr << "Error opening input file: " << inputFile << endl;
+//         return -1;
+//     }
 
-    inFile.seekg(0, ios::end);
-    streampos fileSize = inFile.tellg();
-    inFile.close();
+//     inFile.seekg(0, ios::end);
+//     streampos fileSize = inFile.tellg();
+//     inFile.close();
 
-    // === Step 1: Precompute boundaries ===
-    vector<streampos> starts(numThreads);
-    vector<streampos> ends(numThreads);
+//     // === Step 1: Precompute boundaries ===
+//     vector<streampos> starts(numThreads);
+//     vector<streampos> ends(numThreads);
 
-    streampos approxChunkSize = fileSize / numThreads;
+//     streampos approxChunkSize = fileSize / numThreads;
 
-    for (int i = 0; i < numThreads; ++i)
-    {
-        // Start of current chunk
-        starts[i] = (i == 0) ? static_cast<streampos>(0) : ends[i - 1];
+//     for (int i = 0; i < numThreads; ++i)
+//     {
+//         // Start of current chunk
+//         starts[i] = (i == 0) ? static_cast<streampos>(0) : ends[i - 1];
 
-        if (i == numThreads - 1)
-        {
-            // Last chunk: go to end of file
-            ends[i] = fileSize;
-        }
-        else
-        {
-            streampos roughEnd = starts[i] + approxChunkSize;
+//         if (i == numThreads - 1)
+//         {
+//             // Last chunk: go to end of file
+//             ends[i] = fileSize;
+//         }
+//         else
+//         {
+//             streampos roughEnd = starts[i] + approxChunkSize;
 
-            // Open a new stream to find safe boundary
-            ifstream tempFile(inputFile, ios::binary);
-            tempFile.seekg(roughEnd);
+//             // Open a new stream to find safe boundary
+//             ifstream tempFile(inputFile, ios::binary);
+//             tempFile.seekg(roughEnd);
 
-            char c;
-            bool found = false;
-            while (tempFile.get(c))
-            {
-                if (c == 0x00 || c == 0x02)
-                {
-                    ends[i] = tempFile.tellg();
-                    found = true;
-                    break;
-                }
-            }
+//             char c;
+//             bool found = false;
+//             while (tempFile.get(c))
+//             {
+//                 if (c == 0x00 || c == 0x02)
+//                 {
+//                     ends[i] = tempFile.tellg();
+//                     found = true;
+//                     break;
+//                 }
+//             }
 
-            if (!found)
-                ends[i] = fileSize;  // Fallback to file end
+//             if (!found)
+//                 ends[i] = fileSize;  // Fallback to file end
 
-            tempFile.close();
-        }
-    }
+//             tempFile.close();
+//         }
+//     }
 
-    // === Step 2: Launch threads ===
-    vector<thread> threads;
-    vector<string> tempFiles;
+//     // === Step 2: Launch threads ===
+//     vector<thread> threads;
+//     vector<string> tempFiles;
 
-    for (int i = 0; i < numThreads; ++i)
-    {
-        string chunkFile = "chunk_" + to_string(i) + ".txt";
-        tempFiles.push_back(chunkFile);
+//     for (int i = 0; i < numThreads; ++i)
+//     {
+//         string chunkFile = "chunk_" + to_string(i) + ".txt";
+//         tempFiles.push_back(chunkFile);
 
-        threads.emplace_back(Decompression_Function,
-                             inputFile, starts[i], ends[i], chunkFile);
-    }
+//         threads.emplace_back(Decompression_Function,
+//                              inputFile, starts[i], ends[i], chunkFile);
+//     }
 
-    for (auto &t : threads)
-    {
-        t.join();
-    }
+//     for (auto &t : threads)
+//     {
+//         t.join();
+//     }
 
-    // === Step 3: Merge all chunk text files ===
-    mergeTextFiles(tempFiles, outputFile);
-    cout << "Decoding completed and merged into " << outputFile << endl;
+//     // === Step 3: Merge all chunk text files ===
+//     mergeTextFiles(tempFiles, outputFile);
+//     cout << "Decoding completed and merged into " << outputFile << endl;
 
-    return 0;
-}
+//     return 0;
+// }
 
 
 
@@ -2263,63 +2288,63 @@ uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputF
 //     return 0;
 // }
 
-// // Version 1
-// uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputFile, int numThreads)
-// {
-//     ifstream inFile(inputFile, ios::binary);
-//     if (!inFile)
-//     {
-//         cerr << "Error opening input file: " << inputFile << endl;
-//         return -1;
-//     }
+// Version 1
+uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputFile, int numThreads)
+{
+    ifstream inFile(inputFile, ios::binary);
+    if (!inFile)
+    {
+        cerr << "Error opening input file: " << inputFile << endl;
+        return -1;
+    }
 
-//     inFile.seekg(0, ios::end);
-//     streampos fileSize = inFile.tellg();
-//     streampos chunkSize = fileSize / numThreads;
+    inFile.seekg(0, ios::end);
+    streampos fileSize = inFile.tellg();
+    streampos chunkSize = fileSize / numThreads;
 
-//     vector<thread> threads;
-//     vector<string> tempFiles;
-//     streampos start, end;
+    vector<thread> threads;
+    vector<string> tempFiles;
+    streampos start, end;
 
-//     for (int i = 0; i < numThreads; i++)
-//     {
-//         if (i == 0)
-//             start = 0;
-//         else
-//             start = end;
-//         end = (i == numThreads - 1) ? fileSize : streampos(start + chunkSize);
+    for (int i = 0; i < numThreads; i++)
+    {
+        if (i == 0)
+            start = 0;
+        else
+            start = end;
+        end = (i == numThreads - 1) ? fileSize : streampos(start + chunkSize);
 
-//         // Adjust end position to the nearest newline (0x02) boundary
-//         if (i != numThreads - 1)
-//         {
-//             ifstream tempFile(inputFile, ios::binary);
-//             tempFile.seekg(end);
-//             char c;
-//             while (tempFile.get(c))
-//             {
-//                 // if (c == 0x02 || c == 0x00)
-//                 if ((c & 0xFE) == 0x00 || (c & 0xFE) == 0x02)
-//                     break; // Stop at newline or space
-//             }
-//             end = tempFile.tellg();
-//             tempFile.close();
-//         }
+        // Adjust end position to the nearest newline (0x02) boundary
+        if (i != numThreads - 1)
+        {
+            ifstream tempFile(inputFile, ios::binary);
+            tempFile.seekg(end);
+            char c;
+            while (tempFile.get(c))
+            {
+                // if (c == 0x02 || c == 0x00)
+                if ((c & 0xFE) == 0x00 || (c & 0xFE) == 0x02)
+                    break; // Stop at newline or space
+            }
+            end = tempFile.tellg();
+            tempFile.close();
+        }
 
-//         string chunkFile = "chunk_" + to_string(i) + ".txt";
-//         tempFiles.push_back(chunkFile);
-//         threads.emplace_back(Decompression_Function, inputFile, start, end, chunkFile);
-//     }
+        string chunkFile = "chunk_" + to_string(i) + ".txt";
+        tempFiles.push_back(chunkFile);
+        threads.emplace_back(Decompression_Function, inputFile, start, end, chunkFile);
+    }
 
-//     for (auto &t : threads)
-//     {
-//         t.join();
-//     }
+    for (auto &t : threads)
+    {
+        t.join();
+    }
 
-//     mergeTextFiles(tempFiles, outputFile);
-//     cout << "Decoding completed and merged into " << outputFile << endl;
+    mergeTextFiles(tempFiles, outputFile);
+    cout << "Decoding completed and merged into " << outputFile << endl;
 
-//     return 0;
-// }
+    return 0;
+}
 
 //-------------------------------------------------------------------------------
 

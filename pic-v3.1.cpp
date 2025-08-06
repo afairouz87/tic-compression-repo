@@ -1,11 +1,11 @@
 /*
 
-Title: Enhanced PIC (EPIC) compression
+Title: Original PIC compression
 Author: Abbas A. Fairouz
 Version: 3.1
 Note: multi-threaded version
-Created: Apr. 8, 2025
-Updated: Apr. 19, 2025
+Created: Aug. 1, 2025
+Updated: Aug. 1, 2025
 
 Description:
 * In this version:
@@ -92,6 +92,10 @@ int lineNumber = 1;
 
 //
 mutex fileMutex;
+
+
+// *** For debug and histograms
+uint32_t T1_FREQ = 0, T2_FREQ = 0, T3_FREQ = 0, T4_FREQ = 0, T5_FREQ = 0;
 
 // *********************************************
 //            Main Function
@@ -253,6 +257,13 @@ int main(int argc, char *argv[])
 
     // cout << "Total execution time: " << duration.count() << " milliseconds" << endl;
     // cout << "Number of special codeWords = " << specialCodeWordCounter << endl;
+
+
+    cout << "T1 = " << T1_FREQ << endl;
+    cout << "T2 = " << T2_FREQ << endl;
+    cout << "T3 = " << T3_FREQ << endl;
+    cout << "T4 = " << T4_FREQ << endl;
+    cout << "T5 = " << T5_FREQ << endl;
 
     return 0;
 } // main function
@@ -869,21 +880,31 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet)
                 {                                                     // ONE BYTE encoding
                     inputNumber = serial;                             // add the offset if the reserved codeWords (i.e. space, newline, ..)
                     byteCodes = ONE_BYTE_CODE_GENERATOR(inputNumber); // generate a single byte codeWord
+                    T1_FREQ++;
                 }
                 else if (serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND)
                 { // TWO BYTE encoding
                     inputNumber = serial - TWO_BYTE_OFFSET;
                     byteCodes = TWO_BYTE_CODE_GENERATOR(inputNumber); // generate a two bytes codeWord
+                    T2_FREQ++;
                 }
                 else if (serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND)
                 {
                     inputNumber = serial - (THREE_BYTE_OFFSET);
                     byteCodes = THREE_BYTE_CODE_GENERATOR(inputNumber); // generate a three bytes codeWord
+                    T3_FREQ++;
+                }
+                else if (serial >= FOUR_BYTE_OFFSET && serial < FOUR_BYTE_BOUND)
+                {
+                    inputNumber = serial - (FOUR_BYTE_OFFSET);
+                    byteCodes = FOUR_BYTE_CODE_GENERATOR(inputNumber); // generate a three bytes codeWord
+                    T4_FREQ++;
                 }
                 else
                 {
                     // Add word to the map with the current serial number
                     // dictMapWord[word] = serial;
+                    T5_FREQ++;
                 }
             }
 
@@ -977,6 +998,11 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
                 {
                     inputNumber = serial - (THREE_BYTE_OFFSET);
                     byteCodes = THREE_BYTE_CODE_GENERATOR(inputNumber); // generate a three bytes codeWord
+                }
+                else if (serial >= FOUR_BYTE_OFFSET && serial < FOUR_BYTE_BOUND)
+                {
+                    inputNumber = serial - (FOUR_BYTE_OFFSET);
+                    byteCodes = FOUR_BYTE_CODE_GENERATOR(inputNumber); // generate a three bytes codeWord
                 }
                 else
                 {
@@ -1290,7 +1316,7 @@ vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input)
     byte1 = Shift_Left_with_One_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte1);
 
-    uint8_t byte2 = Shift_Right_Seven_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    uint8_t byte2 = Shift_Right_Six_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 6 positions
     byte2 = Shift_Left_with_Zero_Inserted(byte2);       // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
     codeWord.push_back(byte2);
 
@@ -1305,20 +1331,51 @@ vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input)
 {
     vector<uint8_t> codeWord;
     uint8_t byte1, byte2, byte3;
-    uint32_t input_shitf1;
+    uint32_t input_shift1;
 
     byte1 = Mask_Single_Byte(input);             // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
     byte1 = Shift_Left_with_One_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte1);
 
-    input_shitf1 = Shift_Right_Seven_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
-    byte2 = Mask_Single_Byte(input_shitf1);            // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
+    input_shift1 = Shift_Right_Six_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 6 positions
+    byte2 = Mask_Single_Byte(input_shift1);            // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
     byte2 = Shift_Left_with_One_Inserted(byte2);       // shift 'byte2' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte2);
 
-    byte3 = Shift_Right_Seven_Positions(input_shitf1); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    byte3 = Shift_Right_Six_Positions(input_shift1); // shift 'DICT_ORDER_NUM' to the right by 6 positions
     byte3 = Shift_Left_with_Zero_Inserted(byte3);      // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
     codeWord.push_back(byte3);
+
+    return codeWord;
+}
+
+/*
+'FOUR_BYTE_CODE_GENERATOR' function:
+Generate a 4-byte code of PIC algorithm
+*/
+vector<uint8_t> FOUR_BYTE_CODE_GENERATOR(uint32_t input)
+{
+    vector<uint8_t> codeWord;
+    uint8_t byte1, byte2, byte3, byte4;
+    uint32_t input_shift1, input_shitf2;
+
+    byte1 = Mask_Single_Byte(input);             // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
+    byte1 = Shift_Left_with_One_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
+    codeWord.push_back(byte1);
+
+    input_shift1 = Shift_Right_Six_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    byte2 = Mask_Single_Byte(input_shift1);            // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
+    byte2 = Shift_Left_with_One_Inserted(byte2);       // shift 'byte2' to the left by 1, and insert '1' as the LSb
+    codeWord.push_back(byte2);
+
+    input_shitf2 = Shift_Right_Six_Positions(input_shift1); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    byte3 = Mask_Single_Byte(input_shitf2); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    byte3 = Shift_Left_with_One_Inserted(byte3);      // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
+    codeWord.push_back(byte3);
+
+    byte4 = Shift_Right_Six_Positions(input_shitf2); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    byte4 = Shift_Left_with_Zero_Inserted(byte4);      // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
+    codeWord.push_back(byte4);
 
     return codeWord;
 }
@@ -1341,6 +1398,11 @@ uint32_t Shift_Left_with_One_Inserted(uint32_t number)
 uint32_t Shift_Left_with_Zero_Inserted(uint32_t number)
 {
     return number << 1;
+}
+
+uint32_t Shift_Right_Six_Positions(uint32_t number)
+{
+    return number >> 6;
 }
 
 uint32_t Shift_Right_Seven_Positions(uint32_t number)
@@ -1542,7 +1604,7 @@ uint8_t splitAndProcessTextFile(const string &inputFile, const string &outputFil
             tempFile.close();
         }
 
-        string chunkFile = "chunk_" + to_string(i) + ".bin";
+        string chunkFile = "chunkPIC_" + to_string(i) + ".bin";
         tempFiles.push_back(chunkFile);
         threads.emplace_back(Compression_Function, inputFile, start, end, chunkFile);
     }
@@ -1638,7 +1700,7 @@ uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputF
             tempFile.close();
         }
 
-        string chunkFile = "chunk_" + to_string(i) + ".txt";
+        string chunkFile = "chunkPIC_" + to_string(i) + ".txt";
         tempFiles.push_back(chunkFile);
         threads.emplace_back(Decompression_Function, inputFile, start, end, chunkFile);
     }
@@ -1655,6 +1717,41 @@ uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputF
 }
 
 //-------------------------------------------------------------------------------
+
+
+// uint8_t splitAndProcessBinaryFileForSearch(
+//     const string &inputFile,       // compressed binary file to search
+//     const string &outputFile, // unused in single-thread mode
+//     int numThreads,            // ignored
+//     string searchString
+// ) {
+//     // Open the binary input file at end to get its size
+//     ifstream inFile(inputFile, ios::binary | ios::ate);
+//     if (!inFile) {
+//         cerr << "Error opening binary file: " << inputFile << endl;
+//         return -1;
+//     }
+//     streampos fileSize = inFile.tellg();
+//     inFile.close();
+
+//     // Prepare results container (single slot)
+//     vector<uint32_t> countMatchVector(1, 0);
+
+//     // Run the lookup over the entire binary file
+//     Lookup_Function(
+//         inputFile,                    // binary file path
+//         /*start=*/ static_cast<streampos>(0),
+//         /*end  =*/ fileSize,
+//         searchString,
+//         /*threadIndex=*/ 0,
+//         ref(countMatchVector)
+//     );
+
+//     // Report total matches
+//     cout << "Matched count = " << countMatchVector[0] << endl;
+//     return 0;
+// }
+
 
 
 // Version 2 - Search 
@@ -1790,7 +1887,7 @@ uint8_t splitAndProcessBinaryFileForSearchAndReplace(
             tempFile.close();
         }
 
-        string chunkFile = "chunk_" + to_string(i) + ".bin";
+        string chunkFile = "chunkPIC_" + to_string(i) + ".bin";
         tempFiles.push_back(chunkFile);
         threads.emplace_back(Lookup_and_Replace_Function, inputFile, start, end, chunkFile, searchString, replaceString, i, ref(countMatchVector)); // 'i' is the threadIndex
 
