@@ -59,7 +59,8 @@ vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> FOUR_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes);
-string SPECIAL_CODE_WORD_READER(ifstream *filePtr);
+// string SPECIAL_CODE_WORD_READER(ifstream *filePtr); // old
+string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead);
 //vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input);
 
 // Hello Test

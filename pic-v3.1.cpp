@@ -1106,7 +1106,8 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
                 }
                 else if (finalSerial == NEXT_SPECIAL_CODE)
                 {
-                    word = SPECIAL_CODE_WORD_READER(&inFile);
+                    // word = SPECIAL_CODE_WORD_READER(&inFile); // old version
+                    word = SPECIAL_CODE_WORD_READER(buffer, i, bytesRead);
                     outFile << word;
                 }
                 else
@@ -1162,53 +1163,98 @@ and the string message may be buffered and
 displayed after the program execution completes.
 */
 
-string SPECIAL_CODE_WORD_READER(ifstream *filePtr)
+// new version
+string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
 {
-    if (!filePtr || !filePtr->is_open())
-    {
-        cerr << "Error: Invalid or unopened file pointer!" << endl;
-        return "";
-    }
-
-    // Read the size byte (first byte)
-    uint8_t sizeByte;
-    filePtr->read(reinterpret_cast<char *>(&sizeByte), sizeof(uint8_t));
-    if (filePtr->eof())
-    {
-        cerr << "Error: File is empty or invalid!" << endl;
-        return "";
-    }
-
-    // Determine the number of characters
-    // size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
-    size_t numCharacters = sizeByte;
-
-    // Read the remaining bytes (numCharacters bytes)
-    vector<uint8_t> bytes(numCharacters);
-    filePtr->read(reinterpret_cast<char *>(bytes.data()), numCharacters);
-
-    // Check if the number of bytes read matches the expected number
-    if (filePtr->gcount() != static_cast<streamsize>(numCharacters))
-    {
-        cerr << "Error: File does not contain the expected number of bytes!" << endl;
-        return "";
-    }
-
     string decodedString;
 
-    // Process remaining bytes two at a time
-    for (size_t i = 0; i < bytes.size(); i += 2) {
-        uint8_t highByte = (bytes[i] & 0b01111110) >> 1;  // Extract middle 6 bits
-        uint8_t lowByte = (bytes[i + 1] & 0b01111110) >> 1; // Extract middle 6 bits
+    // Safe check: Make sure there's at least one byte for size
+    if (i + 1 >= bytesRead) {
+        cerr << "Error: Not enough bytes to read size byte!" << endl;
+        return "";
+    }
 
-        // Combine high and low bytes to reconstruct the ASCII character
-        char originalChar = (highByte << 6) | lowByte;
+    // Read the encoded first byte
+    uint8_t firstByte = static_cast<uint8_t>(buffer[++i]);
+    uint8_t numChars = (firstByte >> 1) & 0x3F;  // Extract the middle 6 bits
 
-        decodedString += originalChar;
+    // Sanity check: numChars must be even
+    if (numChars % 2 != 0) {
+        cerr << "Error: Encoded numChars is not even!" << endl;
+        return "";
+    }
+
+    // Make sure we have enough bytes remaining
+    if (i + numChars >= bytesRead) {
+        cerr << "Error: Not enough bytes for special word!" << endl;
+        i--; // rollback to before firstByte
+        return "";
+    }
+
+    for (size_t j = 0; j < numChars; j += 2)
+    {
+        uint8_t highByte = static_cast<uint8_t>(buffer[++i]);
+        uint8_t lowByte  = static_cast<uint8_t>(buffer[++i]);
+
+        uint8_t topBits = (highByte >> 1) & 0x03;   // Extract top 2 bits
+        uint8_t lowBits = (lowByte >> 1) & 0x3F;    // Extract lower 6 bits
+
+        char asciiChar = static_cast<char>((topBits << 6) | lowBits);
+        decodedString += asciiChar;
     }
 
     return decodedString;
 }
+
+
+// // old version 
+// string SPECIAL_CODE_WORD_READER(ifstream *filePtr)
+// {
+//     if (!filePtr || !filePtr->is_open())
+//     {
+//         cerr << "Error: Invalid or unopened file pointer!" << endl;
+//         return "";
+//     }
+
+//     // Read the size byte (first byte)
+//     uint8_t sizeByte;
+//     filePtr->read(reinterpret_cast<char *>(&sizeByte), sizeof(uint8_t));
+//     if (filePtr->eof())
+//     {
+//         cerr << "Error: File is empty or invalid!" << endl;
+//         return "";
+//     }
+
+//     // Determine the number of characters
+//     // size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
+//     size_t numCharacters = sizeByte;
+
+//     // Read the remaining bytes (numCharacters bytes)
+//     vector<uint8_t> bytes(numCharacters);
+//     filePtr->read(reinterpret_cast<char *>(bytes.data()), numCharacters);
+
+//     // Check if the number of bytes read matches the expected number
+//     if (filePtr->gcount() != static_cast<streamsize>(numCharacters))
+//     {
+//         cerr << "Error: File does not contain the expected number of bytes!" << endl;
+//         return "";
+//     }
+
+//     string decodedString;
+
+//     // Process remaining bytes two at a time
+//     for (size_t i = 0; i < bytes.size(); i += 2) {
+//         uint8_t highByte = (bytes[i] & 0b01111110) >> 1;  // Extract middle 6 bits
+//         uint8_t lowByte = (bytes[i + 1] & 0b01111110) >> 1; // Extract middle 6 bits
+
+//         // Combine high and low bytes to reconstruct the ASCII character
+//         char originalChar = (highByte << 6) | lowByte;
+
+//         decodedString += originalChar;
+//     }
+
+//     return decodedString;
+// }
 
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
 {

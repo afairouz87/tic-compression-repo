@@ -1401,8 +1401,9 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
             for (int i = bufferSize - 1; i >= 0; --i)
             {
                 if (buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
+                // if (buffer[i] == 0x0 || buffer[i] == 0x2)
                 {
-                    safeEnd = i;
+                    safeEnd = i; 
                     break;
                 }
             }
