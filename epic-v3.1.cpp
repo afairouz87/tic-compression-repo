@@ -1547,7 +1547,7 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
                     tmpSerial = finalSerial = 0;
                     count = 0;
                     currentPos += (i - start_i);  // update currentPos manually
-                    continue; // already advanced i inside reader
+                    continue; // updated currentPos in the previous statement, and already advanced i inside reader
                 }
                 else
                 {
