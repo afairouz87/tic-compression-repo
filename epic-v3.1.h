@@ -29,13 +29,14 @@ namespace fs = std::filesystem;
 This is used to shift the codeWord by 
 the reserved codeWords (space, newline, nextCapital).
 */ 
-#define CODE_WORD_OFFSET 4    // number of reserved code-words
+#define CODE_WORD_OFFSET 5    // number of reserved code-words
 
 // These reserved code-words nedds to be shifted to the left by 1, and insert a zero.
 #define SPACE_CODE 0x0        // represent a space
 #define NEW_LINE_CODE 0x1     // represent a newline 
 #define NEXT_CAPITAL_CODE 0x2 // represent an uppercase letter of the first character of the next word
 #define NEXT_SPECIAL_CODE 0x3 // represent a special code word in the next bytes of the encoded file
+#define END_SPECIAL_CODE 0x4 // represent a special code word in the next bytes of the encoded file
 // *******************************
 
 // Pre-calculated offset for each code-word type (T0, T1, T2, ...)
@@ -51,6 +52,8 @@ the reserved codeWords (space, newline, nextCapital).
 
 uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
 
+const uint8_t MAX_SPECIAL_LENGTH = 64; // Special Code-Word Limit
+const uint8_t BACKWARD_STOP_STEPS = 2; // backward steps for safe read buffer
 
 bool isPunctModified(char c);
 
@@ -63,7 +66,8 @@ vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes);
-string SPECIAL_CODE_WORD_READER(ifstream *filePtr);
+// string SPECIAL_CODE_WORD_READER(ifstream *filePtr); // old
+string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead); // new version
 //vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input);
 
 // Hello Test

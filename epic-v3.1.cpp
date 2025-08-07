@@ -96,6 +96,9 @@ mutex fileMutex;
 // For debug
 int decodedLineCounter = 0;
 
+// *** For debug and histograms
+uint32_t T1_FREQ = 0, T2_FREQ = 0, T3_FREQ = 0, T4_FREQ = 0;
+
 // *********************************************
 //            Main Function
 // *********************************************
@@ -157,8 +160,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // // Record the start time
-    // auto start = high_resolution_clock::now();
+    // Record the start time
+    auto start = high_resolution_clock::now();
 
     uint32_t numberOfWords = countLinesInFile(dictFilename);
     cout << "Number of lines in the dictionary file: " << numberOfWords << endl;
@@ -250,13 +253,13 @@ int main(int argc, char *argv[])
     dictMapWord.clear();
     dictMapCodeArray = nullptr;
 
-    // // Record the end time
-    // auto end = high_resolution_clock::now();
+    // Record the end time
+    auto end = high_resolution_clock::now();
 
-    // // Calculate the duration in microseconds (or other units)
-    // auto duration = duration_cast<milliseconds>(end - start);
+    // Calculate the duration in microseconds (or other units)
+    auto duration = duration_cast<milliseconds>(end - start);
 
-    // cout << "Total execution time: " << duration.count() << " milliseconds" << endl;
+    cout << "Total execution time: " << duration.count() << " milliseconds" << endl;
     // cout << "Number of special codeWords = " << specialCodeWordCounter << endl;
 
     return 0;
@@ -724,11 +727,13 @@ uint8_t Compression_Function(
             inFile.clear();
             inFile.seekg(-static_cast<streamoff>(unread), ios::cur);
             bytesRead = safeEnd;
+            // currentPos -= unread; // added 
         }
 
         // append full‐line portion to chunkText
         chunkText.append(buffer, bytesRead);
-        currentPos = inFile.tellg();
+        // currentPos = inFile.tellg();
+        currentPos = static_cast<streamoff>(inFile.tellg());
 
         // process all complete lines in chunkText
         istringstream ss(chunkText);
@@ -751,14 +756,14 @@ uint8_t Compression_Function(
         chunkText = leftover;
     }
 
-    // --- here’s the extra bit: encode any final leftover line ---
-    if (!chunkText.empty()) {
-        tokens = processLineChar(chunkText);
-        lineCodeWords = convertStringToCodeWord(tokens);
-        bufferPtr = reinterpret_cast<const char*>(lineCodeWords.data());
-        bufferLen = lineCodeWords.size();
-        outFile.write(bufferPtr, bufferLen);
-    }
+    // // --- here’s the extra bit: encode any final leftover line ---
+    // if (!chunkText.empty()) {
+    //     tokens = processLineChar(chunkText);
+    //     lineCodeWords = convertStringToCodeWord(tokens);
+    //     bufferPtr = reinterpret_cast<const char*>(lineCodeWords.data());
+    //     bufferLen = lineCodeWords.size();
+    //     outFile.write(bufferPtr, bufferLen);
+    // }
 
     inFile.close();
     outFile.close();
@@ -1128,6 +1133,11 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet)
 
                 // for debug ..
                 // cout << "special code: " << word << endl;
+
+                // Push the byteCodes to the lineCodeWords vector
+                lineCodeWords.insert(lineCodeWords.end(), byteCodes.begin(), byteCodes.end());
+                lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(END_SPECIAL_CODE)); // end special codeWord
+                byteCodes.clear();
             }
             else
             {
@@ -1137,33 +1147,41 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet)
                 {                                                     // ONE BYTE encoding
                     inputNumber = serial;                             // add the offset if the reserved codeWords (i.e. space, newline, ..)
                     byteCodes = ONE_BYTE_CODE_GENERATOR(inputNumber); // generate a single byte codeWord
+                    T1_FREQ++;
                 }
                 else if (serial >= TWO_BYTE_OFFSET && serial < TWO_BYTE_BOUND)
                 { // TWO BYTE encoding
                     inputNumber = serial - TWO_BYTE_OFFSET;
                     byteCodes = TWO_BYTE_CODE_GENERATOR(inputNumber); // generate a two bytes codeWord
+                    T2_FREQ++;
                 }
                 else if (serial >= THREE_BYTE_OFFSET && serial < THREE_BYTE_BOUND)
                 {
                     inputNumber = serial - (THREE_BYTE_OFFSET);
                     byteCodes = THREE_BYTE_CODE_GENERATOR(inputNumber); // generate a three bytes codeWord
+                    T3_FREQ++;
                 }
                 else
                 {
                     // Add word to the map with the current serial number
                     // dictMapWord[word] = serial;
+                    T4_FREQ++;
                 }
+
+                // Push the byteCodes to the lineCodeWords vector
+                lineCodeWords.insert(lineCodeWords.end(), byteCodes.begin(), byteCodes.end());
+                byteCodes.clear();
             }
 
-            // Push the byteCodes to the lineCodeWords vector
-            lineCodeWords.insert(lineCodeWords.end(), byteCodes.begin(), byteCodes.end());
-            byteCodes.clear();
+            
 
         } // end of else for special codeWords
 
     } // end of the for loop
 
-    lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEW_LINE_CODE)); // new line codeWord
+    // if (!lineCodeWords.empty()) {
+    lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEW_LINE_CODE)); // newline only if line is not empty
+    // }
 
     return lineCodeWords;
 }
@@ -1226,6 +1244,11 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
 
                 // for debug ..
                 // cout << "special code: " << word << endl;
+
+                // Push the byteCodes to the lineCodeWords vector
+                lineCodeWords.insert(lineCodeWords.end(), byteCodes.begin(), byteCodes.end());
+                lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(END_SPECIAL_CODE)); // end special codeWord
+                byteCodes.clear();
             }
             else
             {
@@ -1251,11 +1274,13 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
                     // Add word to the map with the current serial number
                     // dictMapWord[word] = serial;
                 }
+
+                // Push the byteCodes to the lineCodeWords vector
+                lineCodeWords.insert(lineCodeWords.end(), byteCodes.begin(), byteCodes.end());
+                byteCodes.clear();
             }
 
-            // Push the byteCodes to the lineCodeWords vector
-            lineCodeWords.insert(lineCodeWords.end(), byteCodes.begin(), byteCodes.end());
-            byteCodes.clear();
+            
 
         } // end of else for special codeWords
 
@@ -1364,6 +1389,56 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
 
 
 
+                // else if (finalSerial == NEXT_SPECIAL_CODE)
+                // {
+                //     word.clear();
+                //     // string word = SPECIAL_CODE_WORD_READER(&inFile);
+                //     //size_t start_i = i; // Save current position for full rollback
+
+                //     // Safe check: ensure we can read length
+                //     if (i + 1 >= bytesRead) {
+                //         //cerr << "Error - NEXT_SPECIAL_CODE: i + 1 >= bytesRead\nThe number if bytes of Special code word is incomplete\n.";
+                //         // Roll back and break
+                //         currentPos--;
+                //         break;
+                //     }
+                //     uint8_t numChar = static_cast<uint8_t>(buffer[++i]);
+                //     currentPos++;
+
+                //     if (numChar > MAX_SPECIAL_LENGTH) {
+                //         cerr << "Error - NEXT_SPECIAL_CODE: numChar too large (" << (int)numChar << ")\n";
+                //         currentPos -= 2;
+                //         exit(1);
+                //         // break;
+                //     }
+
+                //     // Safe check: ensure full special word fits in buffer
+                //     if ((i + numChar) >= bytesRead)
+                //     {
+                //         cerr << "Error - NEXT_SPECIAL_CODE: i + numChar >= bytesRead\nSpecial code word incomplete at buffer edge.\n";
+                //         // Roll back and break
+                //         currentPos -= 2;
+                //         break;
+                //     }
+
+                //     for (uint8_t j = 0; j < numChar; ++j)
+                //     {
+                //         try{
+                //             word += static_cast<char>(buffer[++i]);
+                //         }
+                //         catch (const std::length_error& e) {
+                //             cerr << "Caught std::length_error: " << e.what() << std::endl;
+                //             exit(1);
+                //         }
+                //         currentPos++;
+                //     }
+
+                //     outFile << word;
+                // }
+
+
+
+
 // Version 3 (Stable)
 uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, streampos end, const string &outputFileNameText)
 {
@@ -1398,14 +1473,25 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
         if (bytesRead == bufferSize)
         {
             size_t safeEnd = bufferSize;
+            uint8_t stopSteps = 0;
             for (int i = bufferSize - 1; i >= 0; --i)
             {
-                if (buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
-                // if (buffer[i] == 0x0 || buffer[i] == 0x2)
+                uint8_t byte = static_cast<uint8_t>(buffer[i]);
+                uint8_t code = byte >> 1;
+                if (
+                    code == SPACE_CODE ||
+                    code == NEW_LINE_CODE 
+                    // code == END_SPECIAL_CODE
+                )
                 {
-                    safeEnd = i; 
-                    break;
+                    stopSteps++;
+                    if(stopSteps == BACKWARD_STOP_STEPS){
+                        safeEnd = i - 1; 
+                        stopSteps = 0;
+                        break;
+                    }
                 }
+                
             }
             size_t unreadBytes = bytesRead - safeEnd;
             if (unreadBytes > 0)
@@ -1416,11 +1502,9 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
             }
         }
 
-        for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
+        for (size_t i = 0; i < bytesRead && currentPos < end;)
         {
             uint8_t byte = static_cast<uint8_t>(buffer[i]);
-            const uint8_t MAX_SPECIAL_LENGTH = 64; // Special Code-Word Limit
-
             nextByte = byte % 2;
             byte >>= 1;
 
@@ -1448,48 +1532,22 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
                 }
                 else if (finalSerial == NEXT_SPECIAL_CODE)
                 {
-                    word.clear();
-                    //size_t start_i = i; // Save current position for full rollback
+                    size_t start_i = i;
+                    string word = SPECIAL_CODE_WORD_READER(buffer, i, bytesRead);
 
-                    // Safe check: ensure we can read length
-                    if (i + 1 >= bytesRead) {
-                        //cerr << "Error - NEXT_SPECIAL_CODE: i + 1 >= bytesRead\nThe number if bytes of Special code word is incomplete\n.";
-                        // Roll back and break
+                    if (word.empty()) {
+                        // i = start_i;
+                        i = start_i - 1;
                         currentPos--;
                         break;
                     }
-                    uint8_t numChar = static_cast<uint8_t>(buffer[++i]);
-                    currentPos++;
-
-                    if (numChar > MAX_SPECIAL_LENGTH) {
-                        cerr << "Error - NEXT_SPECIAL_CODE: numChar too large (" << (int)numChar << ")\n";
-                        currentPos -= 2;
-                        exit(1);
-                        // break;
-                    }
-
-                    // Safe check: ensure full special word fits in buffer
-                    if ((i + numChar) >= bytesRead)
-                    {
-                        cerr << "Error - NEXT_SPECIAL_CODE: i + numChar >= bytesRead\nSpecial code word incomplete at buffer edge.\n";
-                        // Roll back and break
-                        currentPos -= 2;
-                        break;
-                    }
-
-                    for (uint8_t j = 0; j < numChar; ++j)
-                    {
-                        try{
-                            word += static_cast<char>(buffer[++i]);
-                        }
-                        catch (const std::length_error& e) {
-                            cerr << "Caught std::length_error: " << e.what() << std::endl;
-                            exit(1);
-                        }
-                        currentPos++;
-                    }
 
                     outFile << word;
+                    i++; // to skip the END_SPECIAL_CODE byteCode 
+                    tmpSerial = finalSerial = 0;
+                    count = 0;
+                    currentPos += (i - start_i);  // update currentPos manually
+                    continue; // already advanced i inside reader
                 }
                 else
                 {
@@ -1504,13 +1562,89 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
 
                 tmpSerial = finalSerial = 0;
                 count = 0;
+                ++i; // advance only here
             }
             else
             {
                 finalSerial = concatenateBytes(finalSerial, byte, count);
                 count++;
+                ++i;
             }
+
+            ++currentPos;
         }
+
+        // for (size_t i = 0; i < bytesRead && currentPos < end; ++i)
+        // {
+        //     uint8_t byte = static_cast<uint8_t>(buffer[i]);
+
+        //     nextByte = byte % 2;
+        //     byte >>= 1;
+
+        //     if (nextByte == 0)
+        //     {
+        //         finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, byte, count));
+
+        //         if (count == 1)
+        //             finalSerial += TWO_BYTE_OFFSET;
+        //         else if (count == 2)
+        //             finalSerial += THREE_BYTE_OFFSET;
+
+        //         if (finalSerial == SPACE_CODE)
+        //         {
+        //             outFile << " ";
+        //             word.clear();
+        //         }
+        //         else if (finalSerial == NEW_LINE_CODE)
+        //         {
+        //             outFile << "\n";
+        //             word.clear();
+        //             ++decodedLineCounter;
+        //         }
+        //         else if (finalSerial == NEXT_CAPITAL_CODE)
+        //         {
+        //             NEXT_CAP = true;
+        //         }
+        //         else if (finalSerial == NEXT_SPECIAL_CODE)
+        //         {
+        //             size_t start_i = i;
+                    
+        //             // string word = SPECIAL_CODE_WORD_READER(&inFile);
+        //             string word = SPECIAL_CODE_WORD_READER(buffer, i, bytesRead);
+
+        //             if (word.empty()) {
+        //                 // Rollback and force re-read of buffer in next iteration
+        //                 i = start_i - 1;
+        //                 currentPos--;
+        //                 break;
+        //             }
+                
+        //             outFile << word;
+        //             word.clear();
+        //         }
+        //         else
+        //         {
+        //             word = dictMapCodeArray[finalSerial];
+        //             if (NEXT_CAP)
+        //             {
+        //                 word[0] = toupper(word[0]);
+        //                 NEXT_CAP = false;
+        //             }
+        //             outFile << word;
+        //             word.clear();
+        //         }
+
+        //         tmpSerial = finalSerial = 0;
+        //         count = 0;
+        //     }
+        //     else
+        //     {
+        //         finalSerial = concatenateBytes(finalSerial, byte, count);
+        //         count++;
+        //     }
+
+        //     ++currentPos;
+        // }
     }
 
     inFile.close();
@@ -1544,49 +1678,128 @@ and the string message may be buffered and
 displayed after the program execution completes.
 */
 
-string SPECIAL_CODE_WORD_READER(ifstream *filePtr)
+
+// Version 3
+string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
 {
-    if (!filePtr || !filePtr->is_open())
-    {
-        cerr << "Error: Invalid or unopened file pointer!" << endl;
-        return "";
-    }
-
-    // Read the size byte (first byte)
-    uint8_t sizeByte;
-    filePtr->read(reinterpret_cast<char *>(&sizeByte), sizeof(uint8_t));
-    if (filePtr->eof())
-    {
-        cerr << "Error: File is empty or invalid!" << endl;
-        return "";
-    }
-
-    // Determine the number of characters
-    // size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
-    size_t numCharacters = sizeByte;
-
-    // Read the remaining bytes (numCharacters bytes)
-    vector<uint8_t> bytes(numCharacters);
-    filePtr->read(reinterpret_cast<char *>(bytes.data()), numCharacters);
-
-    // Check if the number of bytes read matches the expected number
-    if (filePtr->gcount() != static_cast<streamsize>(numCharacters))
-    {
-        cerr << "Error: File does not contain the expected number of bytes!" << endl;
-        return "";
-    }
-
-    // Decode the bytes into a string
     string result;
-    for (size_t i = 0; i < bytes.size(); ++i)
-    {
-        uint8_t byte = bytes[i];
-        
-        result += static_cast<char>(byte); // Append to the string
+
+    // Step 1: Make sure there's at least 1 byte to read the size
+    if (i + 1 >= bytesRead) {
+        cerr << "Error: Not enough bytes to read sizeByte!\n";
+        return "";
     }
+
+    uint8_t sizeByte = static_cast<uint8_t>(buffer[++i]); // read size byte
+
+    // Step 2: Check if enough bytes remain for the actual data
+    if (i + sizeByte >= bytesRead) {
+        cerr << "Error: Not enough bytes to read special code word! Needed: " 
+             << static_cast<int>(sizeByte) << ", Available: " << (bytesRead - i - 1) << "\n";
+        i--; // rollback to before reading sizeByte
+        return "";
+    }
+
+    // Step 3: Append raw bytes to result
+    for (uint8_t j = 0; j < sizeByte; ++j)
+        result += static_cast<char>(buffer[++i]); // advance i as we read
 
     return result;
 }
+
+
+// // Version 2
+// string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
+// {
+//     string result;
+
+//     // Check there's at least 1 byte for sizeByte
+//     if (i + 1 >= bytesRead) {
+//         cerr << "Error: Not enough bytes to read sizeByte!\n";
+//         return "";
+//     }
+
+//     uint8_t sizeByte = static_cast<uint8_t>(buffer[++i]);
+
+//     // Safety check: reject oversized words
+//     if (sizeByte > MAX_SPECIAL_LENGTH) {
+//         cerr << "Error: sizeByte exceeds max allowed special word length.\n";
+//         return "";
+//     }
+
+//     // Check there's enough bytes for the word
+//     if (i + sizeByte >= bytesRead) {
+//         cerr << "Error: Not enough bytes for special word. Needed: " 
+//              << static_cast<int>(sizeByte) << ", Available: " << (bytesRead - i - 1) << "\n";
+//         i--; // rollback to before sizeByte
+//         return "";
+//     }
+
+//     for (size_t j = 0; j < sizeByte; ++j) {
+//         result += static_cast<char>(buffer[++i]);
+//     }
+
+//     // Check for END_SPECIAL_CODE terminator
+//     if (i + 1 >= bytesRead) {
+//         cerr << "Error: Missing END_SPECIAL_CODE terminator.\n";
+//         return "";
+//     }
+
+//     if (static_cast<uint8_t>(buffer[++i]) != (END_SPECIAL_CODE << 1)) {
+//         cerr << "Error: Invalid END_SPECIAL_CODE terminator.\n";
+//         return "";
+//     }
+
+//     return result;
+// }
+
+
+
+
+// // Version 1
+// string SPECIAL_CODE_WORD_READER(ifstream *filePtr)
+// {
+//     if (!filePtr || !filePtr->is_open())
+//     {
+//         cerr << "Error: Invalid or unopened file pointer!" << endl;
+//         return "";
+//     }
+
+//     // Read the size byte (first byte)
+//     uint8_t sizeByte;
+//     filePtr->read(reinterpret_cast<char *>(&sizeByte), sizeof(uint8_t));
+//     if (filePtr->eof())
+//     {
+//         cerr << "Error: File is empty or invalid!" << endl;
+//         return "";
+//     }
+
+//     // Determine the number of characters
+//     // size_t numCharacters = sizeByte >> 1; // Ignore the least significant bit
+//     size_t numCharacters = sizeByte;
+
+//     // Read the remaining bytes (numCharacters bytes)
+//     vector<uint8_t> bytes(numCharacters);
+//     filePtr->read(reinterpret_cast<char *>(bytes.data()), numCharacters);
+
+//     // Check if the number of bytes read matches the expected number
+//     if (filePtr->gcount() != static_cast<streamsize>(numCharacters))
+//     {
+//         cerr << "Error: File does not contain the expected number of bytes!" << endl;
+//         return "";
+//     }
+
+//     // Decode the bytes into a string
+//     string result;
+//     for (size_t i = 0; i < bytes.size(); ++i)
+//     {
+//         uint8_t byte = bytes[i];
+        
+//         result += static_cast<char>(byte); // Append to the string
+//     }
+
+//     return result;
+// }
 
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
 {

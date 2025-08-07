@@ -158,8 +158,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // // Record the start time
-    // auto start = high_resolution_clock::now();
+    // Record the start time
+    auto start = high_resolution_clock::now();
 
     uint32_t numberOfWords = countLinesInFile(dictFilename);
     cout << "Number of lines in the dictionary file: " << numberOfWords << endl;
@@ -249,13 +249,13 @@ int main(int argc, char *argv[])
     dictMapWord.clear();
     dictMapCodeArray = nullptr;
 
-    // // Record the end time
-    // auto end = high_resolution_clock::now();
+    // Record the end time
+    auto end = high_resolution_clock::now();
 
-    // // Calculate the duration in microseconds (or other units)
-    // auto duration = duration_cast<milliseconds>(end - start);
+    // Calculate the duration in microseconds (or other units)
+    auto duration = duration_cast<milliseconds>(end - start);
 
-    // cout << "Total execution time: " << duration.count() << " milliseconds" << endl;
+    cout << "Total execution time: " << duration.count() << " milliseconds" << endl;
     // cout << "Number of special codeWords = " << specialCodeWordCounter << endl;
 
 
@@ -808,6 +808,7 @@ vector<string> processLineChar(const string &line)
     if (!word.empty())
     {
         result.push_back(word);
+        word.clear();
     }
 
     return result; // return a vector of separate strings
@@ -1091,6 +1092,8 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
                     finalSerial += TWO_BYTE_OFFSET;
                 else if (count == 2)
                     finalSerial += THREE_BYTE_OFFSET;
+                else if (count == 3)
+                    finalSerial += FOUR_BYTE_OFFSET;
 
                 if (finalSerial == SPACE_CODE)
                 {
