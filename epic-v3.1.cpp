@@ -302,6 +302,7 @@ uint32_t Lookup_and_Replace_Function(
     vector<uint8_t> replaceCodeWords = convertSearchStringToCodeWord(processLineChar(replaceString));
 
     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
+    uint16_t replaceCodeWordsSize = static_cast<uint16_t>(replaceCodeWords.size());
     uint32_t matchCount = 0;
     uint16_t byteIndex = 0;
     vector<uint8_t> tmpCodeWord;
@@ -318,13 +319,25 @@ uint32_t Lookup_and_Replace_Function(
         if (bytesRead == bufferSize)
         {
             size_t safeEnd = bufferSize;
+            uint8_t stopSteps = 0;
             for (int i = bufferSize - 1; i >= 0; --i)
             {
-                if (buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
+                uint8_t byte = static_cast<uint8_t>(buffer[i]);
+                uint8_t code = byte >> 1;
+                if (
+                    code == SPACE_CODE ||
+                    code == NEW_LINE_CODE 
+                    // code == END_SPECIAL_CODE
+                )
                 {
-                    safeEnd = i;
-                    break;
+                    stopSteps++;
+                    if(stopSteps == BACKWARD_STOP_STEPS){
+                        safeEnd = i - 1; 
+                        stopSteps = 0;
+                        break;
+                    }
                 }
+                
             }
             size_t unreadBytes = bytesRead - safeEnd;
             if (unreadBytes > 0)
@@ -335,7 +348,7 @@ uint32_t Lookup_and_Replace_Function(
             }
         }
 
-        for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
+        for (size_t i = 0; (i < bytesRead) && (currentPos < end); ++i, ++currentPos)
         {
             byte = static_cast<uint8_t>(buffer[i]);
             uint16_t nextByteCode = byte % 2;
@@ -344,13 +357,14 @@ uint32_t Lookup_and_Replace_Function(
             {
                 if (i + 1 < bytesRead)
                 {
-                    outFile.put(static_cast<char>(byte));
-                    uint8_t skipLength = static_cast<uint8_t>(buffer[i + 1]);
+                    outFile.put(static_cast<char>(byte)); 
+                    i++; currentPos++;
+                    uint8_t skipLength = static_cast<uint8_t>(buffer[i]);
                     outFile.put(static_cast<char>(skipLength));
-                    i += 2;
-                    currentPos += 2;
+                    i++; currentPos++;
+                    
                     outFile.write(&buffer[i], skipLength);
-                    i += skipLength - 1;
+                    i += skipLength;
                     currentPos += skipLength;
                     byteIndex = 0;
                 }
@@ -361,7 +375,7 @@ uint32_t Lookup_and_Replace_Function(
                 {
                     tmpCodeWord.push_back(byte);
                     byteIndex++;
-                    if (byteIndex == lineCodeWordsSize)
+                    if (byteIndex == lineCodeWordsSize) // match (found)
                     {
                         outFile.write(reinterpret_cast<const char *>(replaceCodeWords.data()), replaceCodeWords.size());
                         matchCount++;
@@ -435,23 +449,33 @@ uint32_t Lookup_Function(
         inFile.read(buffer, bytesToRead);
         size_t bytesRead = inFile.gcount();
 
-        // If we filled the buffer, find a safe break point
         if (bytesRead == bufferSize)
         {
             size_t safeEnd = bufferSize;
+            uint8_t stopSteps = 0;
             for (int i = bufferSize - 1; i >= 0; --i)
             {
-                if (buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6) // reserved code-words
+                uint8_t byte = static_cast<uint8_t>(buffer[i]);
+                uint8_t code = byte >> 1;
+                if (
+                    code == SPACE_CODE ||
+                    code == NEW_LINE_CODE 
+                    // code == END_SPECIAL_CODE
+                )
                 {
-                    safeEnd = i;
-                    break;
+                    stopSteps++;
+                    if(stopSteps == BACKWARD_STOP_STEPS){
+                        safeEnd = i - 1; 
+                        stopSteps = 0;
+                        break;
+                    }
                 }
+                
             }
-            // Adjust file position to re-read the skipped bytes in the next loop
             size_t unreadBytes = bytesRead - safeEnd;
             if (unreadBytes > 0)
             {
-                inFile.clear(); // clear eofbit if set
+                inFile.clear();
                 inFile.seekg(-static_cast<streamoff>(unreadBytes), ios::cur);
                 bytesRead = safeEnd;
             }
@@ -497,7 +521,7 @@ uint32_t Lookup_Function(
                     byteIndex = 0;
                 }
 
-                if (byteIndex == lineCodeWordsSize)
+                if (byteIndex == lineCodeWordsSize) // match (found)
                 {
                     byteIndex = 0;
                     matchCount++;

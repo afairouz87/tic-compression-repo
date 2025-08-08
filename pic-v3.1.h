@@ -36,7 +36,7 @@ the reserved codeWords (space, newline, nextCapital).
 #define NEW_LINE_CODE 0x1     // represent a newline 
 #define NEXT_CAPITAL_CODE 0x2 // represent an uppercase letter of the first character of the next word
 #define NEXT_SPECIAL_CODE 0x3 // represent a special code word in the next bytes of the encoded file
-#define NEXT_SPECIAL_CODE 0x4 // end of a special code word in the encoded file
+#define END_SPECIAL_CODE 0x4 // end of a special code word in the encoded file
 // *******************************
 
 // Pre-calculated offset for each code-word type (T0, T1, T2, ...)
@@ -70,6 +70,7 @@ string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
 uint8_t Mask_Single_Byte(uint32_t number);
 uint32_t Shift_Left_with_One_Inserted(uint32_t number);
 uint32_t Shift_Left_with_Zero_Inserted(uint32_t number);
+uint32_t Shift_Right_Six_Positions(uint32_t number);;
 uint32_t Shift_Right_Seven_Positions(uint32_t number);
 
 uint8_t Compression_Function(const string& inputFile, streampos start, streampos end, const string& outputFile);

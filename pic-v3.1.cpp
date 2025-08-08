@@ -1432,6 +1432,11 @@ uint32_t Shift_Left_with_Zero_Inserted(uint32_t number)
     return number << 1;
 }
 
+uint32_t Shift_Right_Six_Positions(uint32_t number)
+{
+    return number >> 6;
+}
+
 uint32_t Shift_Right_Seven_Positions(uint32_t number)
 {
     return number >> 7;
