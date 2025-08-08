@@ -66,11 +66,7 @@ vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes);
-// string SPECIAL_CODE_WORD_READER(ifstream *filePtr); // old
 string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead); // new version
-//vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input);
-
-// Hello Test
 
 uint8_t Mask_Single_Byte(uint32_t number);
 uint32_t Shift_Left_with_One_Inserted(uint32_t number);
@@ -92,8 +88,6 @@ uint32_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos s
 // Reading a plain text file functions
 uint8_t processFile(const string &filePath);
 vector<string> processLineChar(const string &line); // return a vector of strings
-//vector<string> processLineChar(const string &line, ofstream *file); // return a vector of strings
-//vector<uint8_t> processLineChar(const string &line, ofstream *file); // return a vector of strings
 vector<uint8_t> convertStringToCodeWord(vector<string> word);
 vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet);
 

@@ -29,13 +29,14 @@ namespace fs = std::filesystem;
 This is used to shift the codeWord by 
 the reserved codeWords (space, newline, nextCapital).
 */ 
-#define CODE_WORD_OFFSET 4    // number of reserved code-words
+#define CODE_WORD_OFFSET 5    // number of reserved code-words
 
 // These reserved code-words nedds to be shifted to the left by 1, and insert a zero.
 #define SPACE_CODE 0x0        // represent a space
 #define NEW_LINE_CODE 0x1     // represent a newline 
 #define NEXT_CAPITAL_CODE 0x2 // represent an uppercase letter of the first character of the next word
 #define NEXT_SPECIAL_CODE 0x3 // represent a special code word in the next bytes of the encoded file
+#define NEXT_SPECIAL_CODE 0x4 // end of a special code word in the encoded file
 // *******************************
 
 // Pre-calculated offset for each code-word type (T0, T1, T2, ...)
@@ -51,6 +52,11 @@ the reserved codeWords (space, newline, nextCapital).
 
 uint32_t MASK_BYTE = 0x0000003f; // Mask value for the least significant byte (LSB) of 6 bits only
 
+const uint8_t MAX_SPECIAL_LENGTH = 64; // Special Code-Word Limit
+const uint8_t BACKWARD_STOP_STEPS = 2; // backward steps for safe read buffer
+
+//********************************** 
+
 uint8_t Build_Dictionary_Table_Compression();
 uint8_t Build_Dictionary_Table_Decompression();
 vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input);
@@ -59,18 +65,12 @@ vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> FOUR_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes);
-// string SPECIAL_CODE_WORD_READER(ifstream *filePtr); // old
-string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead);
-//vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input);
-
-// Hello Test
+string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead); // new version
 
 uint8_t Mask_Single_Byte(uint32_t number);
 uint32_t Shift_Left_with_One_Inserted(uint32_t number);
 uint32_t Shift_Left_with_Zero_Inserted(uint32_t number);
-uint32_t Shift_Right_Six_Positions(uint32_t number);
 uint32_t Shift_Right_Seven_Positions(uint32_t number);
-
 
 uint8_t Compression_Function(const string& inputFile, streampos start, streampos end, const string& outputFile);
 uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameText);
@@ -87,8 +87,6 @@ uint32_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos s
 // Reading a plain text file functions
 uint8_t processFile(const string &filePath);
 vector<string> processLineChar(const string &line); // return a vector of strings
-//vector<string> processLineChar(const string &line, ofstream *file); // return a vector of strings
-//vector<uint8_t> processLineChar(const string &line, ofstream *file); // return a vector of strings
 vector<uint8_t> convertStringToCodeWord(vector<string> word);
 vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet);
 
@@ -124,3 +122,5 @@ uint32_t readCodeWords(vector<uint8_t> bytes);
 uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count);
 
 uint32_t countLinesInFile(const string &filePath); // read the number of words in the dictionary 
+
+
