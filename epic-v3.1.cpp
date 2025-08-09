@@ -109,7 +109,7 @@ int main(int argc, char *argv[])
         !(string(argv[2]) == "-c" || string(argv[2]) == "-d" || string(argv[2]) == "-l" || string(argv[2]) == "-r") ||
         string(argv[3]) != "-t")
     {
-        cerr << "Flags:\n-c: compression\n-d: decompression\n-l: Lookup (Search)\n-r: Lookup-and-Replace (Search and Replace)\n"
+        cerr << "Main Error:\nFlags:\n-c: compression\n-d: decompression\n-l: Lookup (Search)\n-r: Lookup-and-Replace (Search and Replace)\n"
              << "Usage: " << argv[0] << " <input_file> -[c,d,l,r] -t <num_threads> <output_file> [\"<search_string>\"] [\"<replace_string>\"]\n"
              << "Notes:\n"
              << "** For -l and -r flags: <search_string> is used.\n"
@@ -123,13 +123,13 @@ int main(int argc, char *argv[])
 
     if(string(argv[2]) == "-l" && argc != 7)
     {
-        cerr << "For -l flag, you need to add the search string.\n";
+        cerr << "Main Error: For -l flag, you need to add the search string.\n";
 
         return 1;
     }
     if(string(argv[2]) == "-r" && argc != 8)
     {
-        cerr << "For -r flag, you need to add the search string and the replace string.\n";
+        cerr << "Main Error: For -r flag, you need to add the search string and the replace string.\n";
 
         return 1;
     }
@@ -151,11 +151,11 @@ int main(int argc, char *argv[])
     {
         numThreads = stoi(argv[4]);
         if (numThreads <= 0)
-            throw invalid_argument("Number of threads must be positive");
+            throw invalid_argument("Main Error: Number of threads must be positive");
     }
     catch (const invalid_argument &e)
     {
-        cerr << "Invalid thread count: " << argv[4] << endl;
+        cerr << "Main Error: Invalid thread count in " << argv[4] << endl;
         return 1;
     }
 
@@ -181,13 +181,20 @@ int main(int argc, char *argv[])
         if (Build_Dictionary_Table_Compression() == 0)
             cout << "The dictionary hash table for compression has been built successfully." << endl;
         else
-            cout << "Error in building the dictionary hash table!" << endl;
+            cerr << "Main Error: in building the dictionary hash table!" << endl;
 
         // Send the text file to multiple compression threads
         if (splitAndProcessTextFile(inputFileName, outputFileName, numThreads) == 0)
+        {
             cout << "The compression function is successful." << endl;
+
+            cout << "T1_FREQ = " << T1_FREQ << endl;
+            cout << "T2_FREQ = " << T2_FREQ << endl;
+            cout << "T3_FREQ = " << T3_FREQ << endl;
+            cout << "T4_FREQ = " << T4_FREQ << endl;
+        }
         else
-            cout << "Error in running the compression function!" << endl;
+            cerr << "Main Error: in running the compression function!" << endl;
     } // compression operation flag
     else if (operationMode == "-d") // decompression operation flag
     { 
@@ -197,14 +204,14 @@ int main(int argc, char *argv[])
         if (Build_Dictionary_Table_Decompression() == 0)
             cout << "The dictionary hash table for decompression has been built successfully." << endl;
         else
-            cout << "Error in building the dictionary hash table!" << endl;
+            cerr << "Main Error: in building the dictionary hash table!" << endl;
 
         if (splitAndProcessBinaryFile(inputFileName, outputFileName, numThreads) == 0){
             cout << "The decompression function is successful." << endl;
             cout << "Decoded lines: " << decodedLineCounter << endl;
         }
         else
-            cout << "Error in running the decompression function!" << endl;
+            cerr << "Main Error: in running the decompression function!" << endl;
     } // decompression operation flag
     else if (operationMode == "-l") // lookup operation flag
     { 
@@ -213,12 +220,12 @@ int main(int argc, char *argv[])
         if (Build_Dictionary_Table_Compression() == 0)
             cout << "The dictionary hash table for compression has been built successfully." << endl;
         else
-            cout << "Error in building the dictionary hash table!" << endl;
+            cerr << "Main Error: in building the dictionary hash table!" << endl;
 
         if (splitAndProcessBinaryFileForSearch(inputFileName, outputFileName, numThreads, searchString) == 0)
             cout << "The lookup function is successful." << endl;
         else
-            cout << "Error in running the lookup function!" << endl;
+            cerr << "Main Error: in running the lookup function!" << endl;
     } // lookup operation flag
     else if (operationMode == "-r") // lookup and replace operation flag
     { 
@@ -227,18 +234,18 @@ int main(int argc, char *argv[])
         if (Build_Dictionary_Table_Compression() == 0)
             cout << "The dictionary hash table for compression has been built successfully." << endl;
         else
-            cout << "Error in building the dictionary hash table!" << endl;
+            cerr << "Main Error: in building the dictionary hash table!" << endl;
 
         if (splitAndProcessBinaryFileForSearchAndReplace(inputFileName, outputFileName, numThreads, searchString, replaceString) == 0)
         //if (splitAndProcessBinaryFileWithReplacement(inputFileName, outputFileName, numThreads, searchString, replaceString) == 0)
             cout << "The lookup function is successful." << endl;
         else
-            cout << "Error in running the lookup function!" << endl;
+            cerr << "Main Error: in running the lookup function!" << endl;
 
     } // lookup and replace operation flag
     else
     { // error
-        cerr << "Invalid operation: " << argv[2] << endl;
+        cerr << "Main Error - Invalid operation: " << argv[2] << endl;
         return 1;
     }
 
@@ -258,7 +265,8 @@ int main(int argc, char *argv[])
     // Calculate the duration in microseconds (or other units)
     auto duration = duration_cast<milliseconds>(end - start);
 
-    cout << "Total execution time: " << duration.count() << " milliseconds" << endl;
+    // cout << "Total execution time: " << duration.count() << " milliseconds" << endl;
+    cout << "Total execution time: " << duration.count() / 1000.0 << " seconds" << endl;
     // cout << "Number of special codeWords = " << specialCodeWordCounter << endl;
 
     return 0;
@@ -355,7 +363,11 @@ uint32_t Lookup_and_Replace_Function(
 
             if (byte == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && byte != lineCodeWords[byteIndex])
             {
-                if (i + 1 < bytesRead)
+                if (i + 1 >= bytesRead) {
+                    cerr << "Error - L and R: Not enough bytes to read sizeByte!\n";
+                    exit(1);
+                }
+                else // (i + 1 < bytesRead)
                 {
                     outFile.put(static_cast<char>(byte)); 
                     i++; currentPos++;
@@ -368,6 +380,7 @@ uint32_t Lookup_and_Replace_Function(
                     currentPos += skipLength;
                     byteIndex = 0;
                 }
+                
             }
             else
             {
@@ -426,7 +439,7 @@ uint32_t Lookup_Function(
     ifstream inFile(inputFileNameBin, ios::binary);
     if (!inFile)
     {
-        cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
+        cerr << "Error - L: Could not open file " << inputFileNameBin << " for reading." << endl;
         return -1;
     }
 
@@ -488,22 +501,17 @@ uint32_t Lookup_Function(
 
             if (byte == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && byte != lineCodeWords[byteIndex])
             {
-                if (i + 1 < bytesRead)
+                if (i + 1 >= bytesRead) {
+                    cerr << "Error - L: Not enough bytes to read sizeByte!\n";
+                    exit(1);
+                }
+                else // (i + 1 < bytesRead)
                 {
                     toSkip = static_cast<uint8_t>(buffer[i + 1]);
                     i += toSkip + 1;
                     currentPos += toSkip + 1;
                     byteIndex = 0;
                 }
-                // else
-                // {
-                //     inFile.read(buffer, 1);
-                //     toSkip = static_cast<uint8_t>(buffer[0]);
-                //     inFile.ignore(toSkip);
-                //     currentPos = inFile.tellg();
-                //     byteIndex = 0;
-                //     break;
-                // }
             }
             else
             {
@@ -552,7 +560,7 @@ uint8_t Build_Dictionary_Table_Decompression()
     // Check if the file is open
     if (!file.is_open())
     {
-        cerr << "Error opening file: " << dictFilename << endl;
+        cerr << "Error - Build D table: opening file: " << dictFilename << endl;
         return 1;
     }
 
@@ -601,7 +609,7 @@ uint8_t Build_Dictionary_Table_Compression()
     // Check if the file is open
     if (!file.is_open())
     {
-        cerr << "Error opening file: " << dictFilename << endl;
+        cerr << "Error - Build C table: opening file: " << dictFilename << endl;
         return 1;
     }
 
@@ -649,7 +657,7 @@ uint8_t Compression_Function(
 {
     ifstream inFile(inputFileText);
     if (!inFile) {
-        cerr << "Error opening file: " << inputFileText << endl;
+        cerr << "Error - C: opening file: " << inputFileText << endl;
         return -1;
     }
 
@@ -661,7 +669,7 @@ uint8_t Compression_Function(
 
     ofstream outFile(outputFileBin, ios::binary | ios::app);
     if (!outFile) {
-        cerr << "Error: Could not open the file." << endl;
+        cerr << "Error C: Could not open the file." << endl;
         return 1;
     }
 
@@ -1064,7 +1072,7 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
     ofstream outFile(outputFileNameText, ios::app);
     if (!inFile || !outFile)
     {
-        cerr << "Error opening files for decompression." << endl;
+        cerr << "Error - D: opening files for decompression." << endl;
         return -1;
     }
 
@@ -1233,7 +1241,7 @@ string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
 
     // Step 1: Make sure there's at least 1 byte to read the size
     if (i + 1 >= bytesRead) {
-        cerr << "Error: Not enough bytes to read sizeByte!\n";
+        cerr << "Error - SPECIAL_CODE_WORD_READER: Not enough bytes to read sizeByte!\n";
         return "";
     }
 
@@ -1241,7 +1249,7 @@ string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
 
     // Step 2: Check if enough bytes remain for the actual data
     if (i + sizeByte >= bytesRead) {
-        cerr << "Error: Not enough bytes to read special code word! Needed: " 
+        cerr << "Error - SPECIAL_CODE_WORD_READER: Not enough bytes to read special code word! Needed: " 
              << static_cast<int>(sizeByte) << ", Available: " << (bytesRead - i - 1) << "\n";
         i--; // rollback to before reading sizeByte
         return "";
@@ -1260,7 +1268,7 @@ string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
     // Ensure the vector has at least one byte (the size byte)
     if (bytes.empty())
     {
-        cerr << "Error: Empty byte vector!" << endl;
+        cerr << "Error - SPECIAL_CODE_WORD_READER_BYTES: Empty byte vector!" << endl;
         return "";
     }
 
@@ -1271,7 +1279,7 @@ string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
     // Validate that the size matches the vector length
     if (bytes.size() != numCharacters + 1)
     {
-        cerr << "Error: Byte vector size does not match encoded size!" << endl;
+        cerr << "Error - SPECIAL_CODE_WORD_READER_BYTES: Byte vector size does not match encoded size!" << endl;
         return "";
     }
 
@@ -1291,7 +1299,7 @@ string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
             // Other bytes: Right shift and ensure the least significant bit was 1
             if ((byte & 0x01) != 1)
             {
-                cerr << "Error: Invalid byte format!" << endl;
+                cerr << "Error - SPECIAL_CODE_WORD_READER_BYTES: Invalid byte format!" << endl;
                 return "";
             }
             byte = byte >> 1; // Drop the LSB
@@ -1472,7 +1480,7 @@ void checkLinesInFile(const string &filePath)
     ifstream file(filePath); // Open the file
     if (!file)
     {
-        cerr << "Error opening file: " << filePath << endl;
+        cerr << "Error - checkLinesInFile: opening file: " << filePath << endl;
         return;
     }
 
@@ -1497,7 +1505,7 @@ void printBinaryFile(const string &filePath)
     ifstream file(filePath, ios::binary); // Open the file in binary mode
     if (!file)
     {
-        cerr << "Error opening file: " << filePath << endl;
+        cerr << "Error - printBinaryFile: opening file: " << filePath << endl;
         return;
     }
 
@@ -1524,7 +1532,7 @@ uint32_t countLinesInFile(const string &filePath)
     ifstream file(filePath);
     if (!file)
     {
-        cerr << "Error: Could not open file " << filePath << endl;
+        cerr << "Error - countLinesInFile: Could not open file " << filePath << endl;
         return 0;
     }
 
@@ -1550,7 +1558,7 @@ void mergeBinaryFiles(const vector<string> &tempFiles, const string &outputFile)
     ofstream outFile(outputFile, ios::binary);
     if (!outFile)
     {
-        cerr << "Error creating merged output file: " << outputFile << endl;
+        cerr << "Error - mergeBinaryFiles: creating merged output file: " << outputFile << endl;
         return;
     }
 
@@ -1559,7 +1567,7 @@ void mergeBinaryFiles(const vector<string> &tempFiles, const string &outputFile)
         ifstream inFile(tempFile, ios::binary);
         if (!inFile)
         {
-            cerr << "Error opening temp file: " << tempFile << endl;
+            cerr << "Error - mergeBinaryFiles: opening temp file: " << tempFile << endl;
             continue;
         }
 
@@ -1620,7 +1628,7 @@ uint8_t splitAndProcessTextFile(const string &inputFile, const string &outputFil
             ofstream out(chunkFile, ios::binary);
 
             if (!in || !out) {
-                cerr << "Error opening chunk files." << endl;
+                cerr << "Error - splitAndProcessTextFile: opening chunk files." << endl;
                 return;
             }
 
@@ -1665,7 +1673,7 @@ void mergeTextFiles(const vector<string> &tempFiles, const string &outputFile)
     ofstream outFile(outputFile);
     if (!outFile)
     {
-        cerr << "Error creating merged output file: " << outputFile << endl;
+        cerr << "Error - mergeTextFiles: creating merged output file: " << outputFile << endl;
         return;
     }
 
@@ -1674,7 +1682,7 @@ void mergeTextFiles(const vector<string> &tempFiles, const string &outputFile)
         ifstream inFile(tempFile);
         if (!inFile)
         {
-            cerr << "Error opening temp file: " << tempFile << endl;
+            cerr << "Error - mergeTextFiles: opening temp file: " << tempFile << endl;
             continue;
         }
 
@@ -1694,7 +1702,7 @@ uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputF
     ifstream inFile(inputFile, ios::binary);
     if (!inFile)
     {
-        cerr << "Error opening input file: " << inputFile << endl;
+        cerr << "Error - splitAndProcessBinaryFile: opening input file: " << inputFile << endl;
         return -1;
     }
 
@@ -1755,7 +1763,7 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
     ifstream inFile(inputFile, ios::binary);
     if (!inFile)
     {
-        cerr << "Error opening input file: " << inputFile << endl;
+        cerr << "Error - splitAndProcessBinaryFileForSearch: opening input file: " << inputFile << endl;
         return -1;
     }
 
@@ -1841,7 +1849,7 @@ uint8_t splitAndProcessBinaryFileForSearchAndReplace(
     ifstream inFile(inputFile, ios::binary);
     if (!inFile)
     {
-        cerr << "Error opening input file: " << inputFile << endl;
+        cerr << "Error - splitAndProcessBinaryFileForSearchAndReplace: opening input file: " << inputFile << endl;
         return -1;
     }
 

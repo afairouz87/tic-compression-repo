@@ -185,7 +185,15 @@ int main(int argc, char *argv[])
 
         // Send the text file to multiple compression threads
         if (splitAndProcessTextFile(inputFileName, outputFileName, numThreads) == 0)
+        {
             cout << "The compression function is successful." << endl;
+            
+            cout << "T1_FREQ = " << T1_FREQ << endl;
+            cout << "T2_FREQ = " << T2_FREQ << endl;
+            cout << "T3_FREQ = " << T3_FREQ << endl;
+            cout << "T4_FREQ = " << T4_FREQ << endl;
+            cout << "T5_FREQ = " << T5_FREQ << endl;
+        }
         else
             cout << "Error in running the compression function!" << endl;
     } // compression operation flag
@@ -302,6 +310,7 @@ uint32_t Lookup_and_Replace_Function(
     vector<uint8_t> replaceCodeWords = convertSearchStringToCodeWord(processLineChar(replaceString));
 
     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
+    uint16_t replaceCodeWordsSize = static_cast<uint16_t>(replaceCodeWords.size());
     uint32_t matchCount = 0;
     uint16_t byteIndex = 0;
     vector<uint8_t> tmpCodeWord;
@@ -318,13 +327,25 @@ uint32_t Lookup_and_Replace_Function(
         if (bytesRead == bufferSize)
         {
             size_t safeEnd = bufferSize;
+            uint8_t stopSteps = 0;
             for (int i = bufferSize - 1; i >= 0; --i)
             {
-                if (buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6)
+                uint8_t byte = static_cast<uint8_t>(buffer[i]);
+                uint8_t code = byte >> 1;
+                if (
+                    code == SPACE_CODE ||
+                    code == NEW_LINE_CODE 
+                    // code == END_SPECIAL_CODE
+                )
                 {
-                    safeEnd = i;
-                    break;
+                    stopSteps++;
+                    if(stopSteps == BACKWARD_STOP_STEPS){
+                        safeEnd = i - 1; 
+                        stopSteps = 0;
+                        break;
+                    }
                 }
+                
             }
             size_t unreadBytes = bytesRead - safeEnd;
             if (unreadBytes > 0)
@@ -335,7 +356,7 @@ uint32_t Lookup_and_Replace_Function(
             }
         }
 
-        for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
+        for (size_t i = 0; (i < bytesRead) && (currentPos < end); ++i, ++currentPos)
         {
             byte = static_cast<uint8_t>(buffer[i]);
             uint16_t nextByteCode = byte % 2;
@@ -344,13 +365,14 @@ uint32_t Lookup_and_Replace_Function(
             {
                 if (i + 1 < bytesRead)
                 {
-                    outFile.put(static_cast<char>(byte));
-                    uint8_t skipLength = static_cast<uint8_t>(buffer[i + 1]);
+                    outFile.put(static_cast<char>(byte)); 
+                    i++; currentPos++;
+                    uint8_t skipLength = static_cast<uint8_t>(buffer[i]) * 2; // Why " *2 "? => each ASCII chaaracter is stored in 2 bytes
                     outFile.put(static_cast<char>(skipLength));
-                    i += 2;
-                    currentPos += 2;
+                    i++; currentPos++;
+                    
                     outFile.write(&buffer[i], skipLength);
-                    i += skipLength - 1;
+                    i += skipLength;
                     currentPos += skipLength;
                     byteIndex = 0;
                 }
@@ -361,7 +383,7 @@ uint32_t Lookup_and_Replace_Function(
                 {
                     tmpCodeWord.push_back(byte);
                     byteIndex++;
-                    if (byteIndex == lineCodeWordsSize)
+                    if (byteIndex == lineCodeWordsSize) // match (found)
                     {
                         outFile.write(reinterpret_cast<const char *>(replaceCodeWords.data()), replaceCodeWords.size());
                         matchCount++;
@@ -464,22 +486,17 @@ uint32_t Lookup_Function(
 
             if (byte == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && byte != lineCodeWords[byteIndex])
             {
-                if (i + 1 < bytesRead)
+                if (i + 1 >= bytesRead) {
+                    cerr << "Error - L: Not enough bytes to read sizeByte!\n";
+                    exit(1);
+                }
+                else // (i + 1 < bytesRead)
                 {
-                    toSkip = static_cast<uint8_t>(buffer[i + 1]);
+                    toSkip = static_cast<uint8_t>(buffer[i + 1]) * 2; // Why " *2 "? => each ASCII chaaracter is stored in 2 bytes
                     i += toSkip + 1;
                     currentPos += toSkip + 1;
                     byteIndex = 0;
                 }
-                // else
-                // {
-                //     inFile.read(buffer, 1);
-                //     toSkip = static_cast<uint8_t>(buffer[0]);
-                //     inFile.ignore(toSkip);
-                //     currentPos = inFile.tellg();
-                //     byteIndex = 0;
-                //     break;
-                // }
             }
             else
             {
@@ -1121,6 +1138,8 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
                     finalSerial += TWO_BYTE_OFFSET;
                 else if (count == 2)
                     finalSerial += THREE_BYTE_OFFSET;
+                else if (count == 3)
+                    finalSerial += FOUR_BYTE_OFFSET;
 
                 if (finalSerial == SPACE_CODE)
                 {
@@ -1196,7 +1215,7 @@ uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count)
     // if (count == 0)
     //     return tmp;
     // else
-    return final | (tmp << (7 * count));
+    return final | (tmp << (6 * count));
 }
 
 /*
@@ -1214,32 +1233,62 @@ displayed after the program execution completes.
 
 
 // Version 3
+// PIC version — read from an in-memory buffer
+// Contract:
+//  - buffer: current chunk
+//  - i: index into buffer; on success advanced to last payload byte
+//  - bytesRead: valid extent of buffer
+// Returns decoded ASCII string or "" if incomplete/invalid in this buffer.
+// On failure, i is rolled back to its position before reading size.
 string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
 {
-    string result;
+    string decoded;
+    const size_t start_i = i;
 
-    // Step 1: Make sure there's at least 1 byte to read the size
+    // Need at least the size byte
     if (i + 1 >= bytesRead) {
-        cerr << "Error: Not enough bytes to read sizeByte!\n";
+        cerr << "Error[PIC]: Not enough bytes to read sizeByte!\n";
         return "";
     }
 
-    uint8_t sizeByte = static_cast<uint8_t>(buffer[++i]); // read size byte
+    // Size (number of encoded bytes to follow)
+    uint8_t numBytes = ((static_cast<uint8_t>(buffer[++i])) >> 1) & 0x3F;
 
-    // Step 2: Check if enough bytes remain for the actual data
-    if (i + sizeByte >= bytesRead) {
-        cerr << "Error: Not enough bytes to read special code word! Needed: " 
-             << static_cast<int>(sizeByte) << ", Available: " << (bytesRead - i - 1) << "\n";
-        i--; // rollback to before reading sizeByte
+
+    // Sanity: must fit in current buffer
+    if (i + numBytes >= bytesRead) {
+        cerr << "Error[PIC]: Not enough bytes to read special code word! Needed: "
+                  << static_cast<int>(numBytes)
+                  << ", Available: " << (bytesRead - i - 1) << "\n";
+        i = start_i;  // rollback to before size
         return "";
     }
 
-    // Step 3: Append raw bytes to result
-    for (uint8_t j = 0; j < sizeByte; ++j)
-        result += static_cast<char>(buffer[++i]); // advance i as we read
+    // Must be pairs (2 bytes per decoded char)
+    if ((numBytes & 1) != 0) {
+        cerr << "Error[PIC]: Encoded special length is odd (" << static_cast<int>(numBytes)
+                  << "); expected even (2 bytes/char).\n";
+        i = start_i;  // rollback so caller can treat this as incomplete/invalid
+        return "";
+    }
 
-    return result;
+    // Decode pairs
+    for (size_t j = 0; j < numBytes; j += 2) {
+        uint8_t b1 = static_cast<uint8_t>(buffer[++i]);
+        uint8_t b2 = static_cast<uint8_t>(buffer[++i]);
+
+        // Extract middle 6 bits from each, then combine: [b1_5:0][b2_5:0]
+        uint8_t high6 = (b1 & 0b01111110) >> 1;
+        uint8_t low6  = (b2 & 0b01111110) >> 1;
+
+        char ch = static_cast<char>((high6 << 6) | low6);
+        decoded += ch;
+    }
+
+    // Success: i now points at the last payload byte
+    return decoded;
 }
+
 
 
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
@@ -1348,7 +1397,7 @@ vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input)
     byte1 = Shift_Left_with_One_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte1);
 
-    uint8_t byte2 = Shift_Right_Seven_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    uint8_t byte2 = Shift_Right_Six_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
     byte2 = Shift_Left_with_Zero_Inserted(byte2);       // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
     codeWord.push_back(byte2);
 
@@ -1369,12 +1418,12 @@ vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input)
     byte1 = Shift_Left_with_One_Inserted(byte1); // shift 'byte1' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte1);
 
-    input_shitf1 = Shift_Right_Seven_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    input_shitf1 = Shift_Right_Six_Positions(input); // shift 'DICT_ORDER_NUM' to the right by 7 positions
     byte2 = Mask_Single_Byte(input_shitf1);            // mask the LSb of 'DICT_ORDER_NUM' using mask1, store it in 'byte1'
     byte2 = Shift_Left_with_One_Inserted(byte2);       // shift 'byte2' to the left by 1, and insert '1' as the LSb
     codeWord.push_back(byte2);
 
-    byte3 = Shift_Right_Seven_Positions(input_shitf1); // shift 'DICT_ORDER_NUM' to the right by 7 positions
+    byte3 = Shift_Right_Six_Positions(input_shitf1); // shift 'DICT_ORDER_NUM' to the right by 7 positions
     byte3 = Shift_Left_with_Zero_Inserted(byte3);      // shift 'DICT_ORDER_NUM_shift' to the left by 1 position
     codeWord.push_back(byte3);
 
@@ -1558,7 +1607,7 @@ uint32_t countLinesInFile(const string &filePath)
         return 0;
     }
 
-    // Count newline characters using std::count and istreambuf_iterator
+    // Count newline characters using count and istreambuf_iterator
     size_t lineCount = count(istreambuf_iterator<char>(file),
                              istreambuf_iterator<char>(), '\n');
 
@@ -1595,7 +1644,7 @@ void mergeBinaryFiles(const vector<string> &tempFiles, const string &outputFile)
 
         outFile << inFile.rdbuf(); // Append to final output
         inFile.close();
-        std::remove(tempFile.c_str()); // Delete and remove temporary file
+        remove(tempFile.c_str()); // Delete and remove temporary file
     }
     outFile.close();
     cout << "Binary files merged into " << outputFile << endl;
@@ -1710,7 +1759,7 @@ void mergeTextFiles(const vector<string> &tempFiles, const string &outputFile)
 
         outFile << inFile.rdbuf(); // Append to final output
         inFile.close();
-        std::remove(tempFile.c_str()); // Delete and remove temporary file
+        remove(tempFile.c_str()); // Delete and remove temporary file
     }
     outFile.close();
     cout << "Text files merged into " << outputFile << endl;
