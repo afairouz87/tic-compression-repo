@@ -1,11 +1,10 @@
 \begin{table}[ht]
 \centering
-\begin{tabular}{llrrrrr}
+\begin{tabular}{ccccccc}
 \hline
-\multirow{2}{*}{File Name} & \multirow{2}{*}{File Size (MB)} & \multicolumn{5}{c}{Compression Ratio} \\ 
-\multicolumn{1}{c}{PIC} & \multicolumn{1}{c}{TIC} & \multicolumn{1}{c}{gzip} & \multicolumn{1}{c}{bzip2} & \multicolumn{1}{c}{lz4} \\
+\makecell{FileName} & \makecell{File Size(MB)} & \makecell{TIC} & \makecell{PIC} & \makecell{gzip} & \makecell{bzip2} & \makecell{lz4} \\
 \hline
-test4.txt & 0.382 & 1.45 & 1.68 & 2.623 & 3.469 & 1.577 \\
+test4.txt & 0.382 & 1.680 & 1.450 & 2.623 & 3.469 & 1.577 \\
 \hline
 \end{tabular}
 \caption{Compression ratios across tools (higher is better).}

@@ -1,6 +1,2 @@
-Tool,Runtime (s)
-PIC,0.653
-TIC,0.6
-gzip,0.058
-bzip2,0.052
-lz4,0.057
+File name,File Size (MB),TIC (s),PIC,gzip,bzip2,lz4
+test4.txt,0.382,0.437,1.007,0.121,0.128,0.13

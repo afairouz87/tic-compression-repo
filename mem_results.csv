@@ -1,6 +1,2 @@
-Tool,Memory (MB)
-PIC,14.964
-TIC,14.841
-gzip,0.641
-bzip2,0.656
-lz4,0.031
+File name,TIC (MB),PIC,gzip,bzip2,lz4
+test4.txt,21.152,0.977,0.032,0.03,0.03
