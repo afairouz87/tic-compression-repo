@@ -1,2 +1,2 @@
-File Name,Original Size (MB),TIC,PIC,gzip,bzip2,lz4
-test4.txt,0.382,1.723,1.484,2.624,3.472,1.577
+File Name,File Size (MB),PIC,TIC,gzip,bzip2,lz4
+test4.txt,0.382,1.45,1.68,2.623,3.469,1.577

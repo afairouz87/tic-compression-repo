@@ -106,10 +106,10 @@ int main(int argc, char *argv[])
     // int main() {
 
     if (!(argc == 6 || argc == 7 || argc == 8) ||
-        !(string(argv[2]) == "-c" || string(argv[2]) == "-d" || string(argv[2]) == "-l" || string(argv[2]) == "-r") ||
-        string(argv[3]) != "-t")
+        !(string(argv[1]) == "-c" || string(argv[1]) == "-d" || string(argv[1]) == "-l" || string(argv[1]) == "-r") ||
+        string(argv[2]) != "-t")
     {
-        cerr << "Flags:\n-c: compression\n-d: decompression\n-l: Lookup (Search)\n-r: Lookup-and-Replace (Search and Replace)\n"
+        cerr << "Main Error:\nFlags:\n-c: compression\n-d: decompression\n-l: Lookup (Search)\n-r: Lookup-and-Replace (Search and Replace)\n"
              << "Usage: " << argv[0] << " <input_file> -[c,d,l,r] -t <num_threads> <output_file> [\"<search_string>\"] [\"<replace_string>\"]\n"
              << "Notes:\n"
              << "** For -l and -r flags: <search_string> is used.\n"
@@ -121,21 +121,21 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if(string(argv[2]) == "-l" && argc != 7)
+    if(string(argv[1]) == "-l" && argc != 7)
     {
-        cerr << "For -l flag, you need to add the search string.\n";
+        cerr << "Main Error: For -l flag, you need to add the search string.\n";
 
         return 1;
     }
-    if(string(argv[2]) == "-r" && argc != 8)
+    if(string(argv[1]) == "-r" && argc != 8)
     {
-        cerr << "For -r flag, you need to add the search string and the replace string.\n";
+        cerr << "Main Error: For -r flag, you need to add the search string and the replace string.\n";
 
         return 1;
     }
 
-    string inputFileName = argv[1];
-    string operationMode = argv[2];
+    string operationMode = argv[1];
+    string inputFileName = argv[4];
     string outputFileName = argv[5];
     string searchString = "", replaceString = "";
 
@@ -149,13 +149,13 @@ int main(int argc, char *argv[])
 
     try
     {
-        numThreads = stoi(argv[4]);
+        numThreads = stoi(argv[3]);
         if (numThreads <= 0)
-            throw invalid_argument("Number of threads must be positive");
+            throw invalid_argument("Main Error: Number of threads must be positive");
     }
     catch (const invalid_argument &e)
     {
-        cerr << "Invalid thread count: " << argv[4] << endl;
+        cerr << "Main Error: Invalid thread count in " << argv[3] << endl;
         return 1;
     }
 
@@ -367,13 +367,15 @@ uint32_t Lookup_and_Replace_Function(
                 {
                     outFile.put(static_cast<char>(byte)); 
                     i++; currentPos++;
-                    uint8_t skipLength = static_cast<uint8_t>(buffer[i]) * 2; // Why " *2 "? => each ASCII chaaracter is stored in 2 bytes
-                    outFile.put(static_cast<char>(skipLength));
+                    byte = static_cast<uint8_t>(buffer[i]);
+                    outFile.put(static_cast<char>(byte)); 
                     i++; currentPos++;
+                    // uint8_t skipLength = (static_cast<uint8_t>(buffer[i])) * 2; // Why " *2 "? => each ASCII chaaracter is stored in 2 bytes
+                    uint8_t skipLength = (byte & 0x01111110) >> 1; 
                     
                     outFile.write(&buffer[i], skipLength);
-                    i += skipLength;
-                    currentPos += skipLength;
+                    i += skipLength - 1;
+                    currentPos += skipLength - 1;
                     byteIndex = 0;
                 }
             }
@@ -1212,9 +1214,6 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
 
 uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count)
 {
-    // if (count == 0)
-    //     return tmp;
-    // else
     return final | (tmp << (6 * count));
 }
 
@@ -1248,11 +1247,12 @@ string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
     // Need at least the size byte
     if (i + 1 >= bytesRead) {
         cerr << "Error[PIC]: Not enough bytes to read sizeByte!\n";
-        return "";
+        exit(1);
     }
 
     // Size (number of encoded bytes to follow)
     uint8_t numBytes = ((static_cast<uint8_t>(buffer[++i])) >> 1) & 0x3F;
+    cout << "SPECIAL_CODE_WORD_READER: numBytes = " << unsigned(numBytes) << endl; // debug 
 
 
     // Sanity: must fit in current buffer
@@ -1261,16 +1261,16 @@ string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
                   << static_cast<int>(numBytes)
                   << ", Available: " << (bytesRead - i - 1) << "\n";
         i = start_i;  // rollback to before size
-        return "";
+        exit(1);
     }
 
-    // Must be pairs (2 bytes per decoded char)
-    if ((numBytes & 1) != 0) {
-        cerr << "Error[PIC]: Encoded special length is odd (" << static_cast<int>(numBytes)
-                  << "); expected even (2 bytes/char).\n";
-        i = start_i;  // rollback so caller can treat this as incomplete/invalid
-        return "";
-    }
+    // // Must be pairs (2 bytes per decoded char)
+    // if ((numBytes & 1) != 0) {
+    //     cerr << "Error[PIC]: Encoded special length is odd (" << static_cast<int>(numBytes)
+    //               << "); expected even (2 bytes/char).\n";
+    //     i = start_i;  // rollback so caller can treat this as incomplete/invalid
+    //     exit(1);
+    // }
 
     // Decode pairs
     for (size_t j = 0; j < numBytes; j += 2) {
@@ -1346,10 +1346,10 @@ Generate
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input)
 {
     vector<uint8_t> result;
-    uint8_t numChars = static_cast<uint8_t>(input.length() * 2); // input.length() * 2 => each ASCII character is represented using two bytes
+    uint8_t numBytes = static_cast<uint8_t>(input.length() * 2); // input.length() * 2 => each ASCII character is represented using two bytes
     
-    // Encode the first byte: MSB = 1, LSB = 1, middle 6 bits = numChars
-    uint8_t firstByte = (0b10000001) | (numChars << 1);
+    // Encode the first byte: MSB = 1, LSB = 1, middle 6 bits = numBytes
+    uint8_t firstByte = (0b10000001) | (numBytes << 1);
     result.push_back(firstByte);
     
     // Process each ASCII character into two bytes (high byte and low byte)

@@ -106,8 +106,8 @@ int main(int argc, char *argv[])
     // int main() {
 
     if (!(argc == 6 || argc == 7 || argc == 8) ||
-        !(string(argv[2]) == "-c" || string(argv[2]) == "-d" || string(argv[2]) == "-l" || string(argv[2]) == "-r") ||
-        string(argv[3]) != "-t")
+        !(string(argv[1]) == "-c" || string(argv[1]) == "-d" || string(argv[1]) == "-l" || string(argv[1]) == "-r") ||
+        string(argv[2]) != "-t")
     {
         cerr << "Main Error:\nFlags:\n-c: compression\n-d: decompression\n-l: Lookup (Search)\n-r: Lookup-and-Replace (Search and Replace)\n"
              << "Usage: " << argv[0] << " <input_file> -[c,d,l,r] -t <num_threads> <output_file> [\"<search_string>\"] [\"<replace_string>\"]\n"
@@ -121,21 +121,21 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if(string(argv[2]) == "-l" && argc != 7)
+    if(string(argv[1]) == "-l" && argc != 7)
     {
         cerr << "Main Error: For -l flag, you need to add the search string.\n";
 
         return 1;
     }
-    if(string(argv[2]) == "-r" && argc != 8)
+    if(string(argv[1]) == "-r" && argc != 8)
     {
         cerr << "Main Error: For -r flag, you need to add the search string and the replace string.\n";
 
         return 1;
     }
 
-    string inputFileName = argv[1];
-    string operationMode = argv[2];
+    string operationMode = argv[1];
+    string inputFileName = argv[4];
     string outputFileName = argv[5];
     string searchString = "", replaceString = "";
 
@@ -149,13 +149,13 @@ int main(int argc, char *argv[])
 
     try
     {
-        numThreads = stoi(argv[4]);
+        numThreads = stoi(argv[3]);
         if (numThreads <= 0)
             throw invalid_argument("Main Error: Number of threads must be positive");
     }
     catch (const invalid_argument &e)
     {
-        cerr << "Main Error: Invalid thread count in " << argv[4] << endl;
+        cerr << "Main Error: Invalid thread count in " << argv[3] << endl;
         return 1;
     }
 
@@ -376,8 +376,8 @@ uint32_t Lookup_and_Replace_Function(
                     i++; currentPos++;
                     
                     outFile.write(&buffer[i], skipLength);
-                    i += skipLength;
-                    currentPos += skipLength;
+                    i += skipLength - 1;
+                    currentPos += skipLength - 1;
                     byteIndex = 0;
                 }
                 
