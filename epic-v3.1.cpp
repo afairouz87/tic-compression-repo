@@ -105,12 +105,23 @@ int main(int argc, char *argv[])
 {
     // int main() {
 
+    /*
+    argv[0]: binary file
+    argv[1]: mode flag (-c, -d, -l, -r)
+    argv[2]: thread flag (-t)
+    argv[3]: number of thread 
+    argv[4]: input file
+    argv[5]: output file (dummy for -l)
+    argv[6]: search string (for -l and -r)
+    argv[7]: replace string (for -r)
+    */
+
     if (!(argc == 6 || argc == 7 || argc == 8) ||
         !(string(argv[1]) == "-c" || string(argv[1]) == "-d" || string(argv[1]) == "-l" || string(argv[1]) == "-r") ||
         string(argv[2]) != "-t")
     {
         cerr << "Main Error:\nFlags:\n-c: compression\n-d: decompression\n-l: Lookup (Search)\n-r: Lookup-and-Replace (Search and Replace)\n"
-             << "Usage: " << argv[0] << " <input_file> -[c,d,l,r] -t <num_threads> <output_file> [\"<search_string>\"] [\"<replace_string>\"]\n"
+             << "Usage: " << argv[0] << " -[c,d,l,r] -t <num_threads> <input_file> <output_file> [\"<search_string>\"] [\"<replace_string>\"]\n"
              << "Notes:\n"
              << "** For -l and -r flags: <search_string> is used.\n"
              << "** For -l flag: <output_file> is ignored\n"
@@ -121,7 +132,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if(string(argv[1]) == "-l" && argc != 7)
+    if(string(argv[1]) == "-l" && argc != 6)
     {
         cerr << "Main Error: For -l flag, you need to add the search string.\n";
 

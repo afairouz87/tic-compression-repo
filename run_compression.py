@@ -16,6 +16,12 @@ LATEX_CAPTION_CR   = "Compression Ratio (CR)."
 LATEX_CAPTION_TIME = "Compression Runtime: TIC absolute in sec, others as ratios vs TIC."
 LATEX_CAPTION_MEM  = "Memory Utilization: TIC absolute in MB, others as ratios vs TIC."
 
+# ---- LaTeX headers you can edit freely (add \\ where you want line breaks) ----
+CR_HEADERS   = ["File Name", "File Size (MB)"] + TOOLS_ORDER
+TIME_HEADERS = ["File name", "File Size (MB)", "TIC (s)", "PIC", "gzip", "bzip2", "lz4"]
+MEM_HEADERS  = ["File name", "TIC (MB)", "PIC", "gzip", "bzip2", "lz4"]
+# ------------------------------------------------------------------------------
+
 PIC_BINARY       = "./pic-v3.1"
 TIC_BINARY       = "./epic-v3.1"
 PIC_FLAGS        = ["-c", "-t", "1"]
@@ -90,46 +96,42 @@ def _format_cell(x):
     if isinstance(x, (int, float)):
         return f"{x:.3f}"
     try:
-        # handle numpy types or strings that are numeric
         v = float(x)
         return f"{v:.3f}"
     except Exception:
         return _latex_escape(str(x))
 
 
-def _makecell(header_top: str, header_bottom: str):
-    # return r"\makecell{" + _latex_escape(header_top) + r"\\ " + _latex_escape(header_bottom) + "}"
-    return r"\makecell{" + _latex_escape(header_top) + _latex_escape(header_bottom) + "}"
+# For headers we DO NOT escape backslashes, so you can add manual \\ line breaks.
+def _makecell_header(s: str) -> str:
+    return r"\makecell{" + s + "}"
 
 
 def build_cr_latex_table(wide_df, tools_order, caption, tex_path=LATEX_CR_FILE):
     r"""
     Build LaTeX table for compression ratios using \makecell headers.
-    Columns: File Name | File Size (MB) | <tool CR>...
+    Columns: headers from CR_HEADERS.
     """
-    colspec = "cc" + "c"*len(tools_order)
+    headers = CR_HEADERS
+    colspec = "c" * len(headers)
 
-    # Header row
-    h_file  = _makecell("File", "Name")
-    h_size  = _makecell("File Size", "(MB)")
-    # h_tools = [r"\makecell{" + _latex_escape(t) + r"\\ CR}" for t in tools_order]
-    h_tools = [r"\makecell{" + _latex_escape(t) + r"}" for t in tools_order]
-    header  = " & ".join([h_file, h_size] + h_tools) + r" \\"
+    header_row = " & ".join(_makecell_header(h) for h in headers) + r" \\"
 
-    # Body
     lines = []
     for _, row in wide_df.iterrows():
-        fname = _latex_escape(row["File Name"])
-        fsize = _format_cell(row["File Size (MB)"])
-        right = " & ".join(_format_cell(row[t]) for t in tools_order)
-        lines.append(f"{fname} & {fsize} & {right} \\\\")
+        cells = [
+            _latex_escape(row["File Name"]),
+            _format_cell(row["File Size (MB)"]),
+            *(_format_cell(row[t]) for t in tools_order),
+        ]
+        lines.append(" & ".join(cells) + r" \\")
 
     latex = (
         r"\begin{table}[ht]" "\n"
         r"\centering" "\n"
         r"\begin{tabular}{" + colspec + r"}" "\n"
         r"\hline" "\n" +
-        header + "\n" +
+        header_row + "\n" +
         r"\hline" "\n" +
         "\n".join(lines) + "\n" +
         r"\hline" "\n"
@@ -145,28 +147,18 @@ def build_cr_latex_table(wide_df, tools_order, caption, tex_path=LATEX_CR_FILE):
 def build_time_latex_table(time_df, caption, tex_path=LATEX_TIME_FILE):
     r"""
     Build LaTeX table for runtime CSV using \makecell headers.
-    Columns: File name | File Size (MB) | TIC (s) | PIC | gzip | bzip2 | lz4
-    (Non-TIC columns are ratios vs TIC.)
+    Columns: headers from TIME_HEADERS.
     """
-    cols = ["File name", "File Size (MB)", "TIC (s)", "PIC", "gzip", "bzip2", "lz4"]
-    colspec = "cc" + "c"*(len(cols)-2)
+    cols    = TIME_HEADERS
+    colspec = "c" * len(cols)
 
-    headers = [
-        _makecell("File", "name"),
-        _makecell("File Size", "(MB)"),
-        _makecell("TIC", "(s)"),
-        _makecell("PIC", ""),
-        _makecell("gzip", ""),
-        _makecell("bzip2", ""),
-        _makecell("lz4", ""),
-    ]
-    header = " & ".join(headers) + r" \\"
+    header_row = " & ".join(_makecell_header(h) for h in cols) + r" \\"
 
     lines = []
     for _, row in time_df.iterrows():
-        cells = [_format_cell(row[c]) for c in cols]
-        # Escape filename only (others already formatted)
-        cells[0] = _latex_escape(row["File name"])
+        cells = [row[c] for c in cols]  # keep order
+        cells[0] = _latex_escape(str(cells[0]))         # filename escape
+        cells = [_format_cell(c) if i != 0 else cells[0] for i, c in enumerate(cells)]
         lines.append(" & ".join(cells) + r" \\")
 
     latex = (
@@ -174,7 +166,7 @@ def build_time_latex_table(time_df, caption, tex_path=LATEX_TIME_FILE):
         r"\centering" "\n"
         r"\begin{tabular}{" + colspec + r"}" "\n"
         r"\hline" "\n" +
-        header + "\n" +
+        header_row + "\n" +
         r"\hline" "\n" +
         "\n".join(lines) + "\n" +
         r"\hline" "\n"
@@ -190,26 +182,18 @@ def build_time_latex_table(time_df, caption, tex_path=LATEX_TIME_FILE):
 def build_mem_latex_table(mem_df, caption, tex_path=LATEX_MEM_FILE):
     r"""
     Build LaTeX table for memory CSV using \makecell headers.
-    Columns: File name | TIC (MB) | PIC | gzip | bzip2 | lz4
-    (Non-TIC columns are ratios vs TIC.)
+    Columns: headers from MEM_HEADERS.
     """
-    cols = ["File name", "TIC (MB)", "PIC", "gzip", "bzip2", "lz4"]
-    colspec = "c" + "c"*(len(cols)-1)
+    cols    = MEM_HEADERS
+    colspec = "c" * len(cols)
 
-    headers = [
-        _makecell("File", "name"),
-        _makecell("TIC", "(MB)"),
-        _makecell("PIC", ""),
-        _makecell("gzip", ""),
-        _makecell("bzip2", ""),
-        _makecell("lz4", ""),
-    ]
-    header = " & ".join(headers) + r" \\"
+    header_row = " & ".join(_makecell_header(h) for h in cols) + r" \\"
 
     lines = []
     for _, row in mem_df.iterrows():
-        cells = [_format_cell(row[c]) for c in cols]
-        cells[0] = _latex_escape(row["File name"])
+        cells = [row[c] for c in cols]
+        cells[0] = _latex_escape(str(cells[0]))         # filename escape
+        cells = [_format_cell(c) if i != 0 else cells[0] for i, c in enumerate(cells)]
         lines.append(" & ".join(cells) + r" \\")
 
     latex = (
@@ -217,7 +201,7 @@ def build_mem_latex_table(mem_df, caption, tex_path=LATEX_MEM_FILE):
         r"\centering" "\n"
         r"\begin{tabular}{" + colspec + r"}" "\n"
         r"\hline" "\n" +
-        header + "\n" +
+        header_row + "\n" +
         r"\hline" "\n" +
         "\n".join(lines) + "\n" +
         r"\hline" "\n"
@@ -286,7 +270,7 @@ def main():
         "bzip2": _safe_ratio(metrics.get("bzip2", {}).get("runtime_s", 0.0), tic_time),
         "lz4":   _safe_ratio(metrics.get("lz4",   {}).get("runtime_s", 0.0), tic_time),
     }
-    time_df = pd.DataFrame([time_row])[["File name","File Size (MB)","TIC (s)","PIC","gzip","bzip2","lz4"]]
+    time_df = pd.DataFrame([time_row])[TIME_HEADERS]
     time_df.to_csv(C_TIME_CSV, index=False)
 
     # ---------- CSV 3: mem_results.csv ----------
@@ -299,7 +283,7 @@ def main():
         "bzip2": _safe_ratio(metrics.get("bzip2", {}).get("memory_MB", 0.0), tic_mem),
         "lz4":   _safe_ratio(metrics.get("lz4",   {}).get("memory_MB", 0.0), tic_mem),
     }
-    mem_df = pd.DataFrame([mem_row])[["File name","TIC (MB)","PIC","gzip","bzip2","lz4"]]
+    mem_df = pd.DataFrame([mem_row])[MEM_HEADERS]
     mem_df.to_csv(MEM_CSV, index=False)
 
     # ---------- LaTeX tables ----------
