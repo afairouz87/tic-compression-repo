@@ -1,7 +1,7 @@
 # Compiler
 CXX = g++
 # Compiler flags
-CXXFLAGS = -std=c++11
+CXXFLAGS = -std=c++17
 # Target executables
 TARGETS = pic-v3.1 epic-v3.1
 # Source files
