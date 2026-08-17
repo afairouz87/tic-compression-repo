@@ -1,1 +1,23 @@
-test5.txt
+# macOS
+.DS_Store
+
+# Claude
+CLAUDE.md
+.claude/
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+nohup.out
+
+# Debug
+*.dSYM/
+
+# Backup folders
+results_backup/
+
+# Python cache
+__pycache__/
+*.pyc

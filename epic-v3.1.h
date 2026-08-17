@@ -13,6 +13,7 @@
 #include <bitset>
 #include <iomanip>
 #include <algorithm>
+#include <ctime>
 
 #include <mutex>
 #include <stdexcept>
@@ -31,7 +32,7 @@ the reserved codeWords (space, newline, nextCapital).
 */ 
 #define CODE_WORD_OFFSET 5    // number of reserved code-words
 
-// These reserved code-words nedds to be shifted to the left by 1, and insert a zero.
+// These reserved code-words need to be shifted to the left by 1, and insert a zero.
 #define SPACE_CODE 0x0        // represent a space
 #define NEW_LINE_CODE 0x1     // represent a newline 
 #define NEXT_CAPITAL_CODE 0x2 // represent an uppercase letter of the first character of the next word
@@ -50,7 +51,7 @@ the reserved codeWords (space, newline, nextCapital).
 #define FOUR_BYTE_BOUND 270549120 // = ( pow(2,7) + pow(2,14) + pow(2,21) + pow(2,28) )
 
 
-uint32_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
+uint64_t MASK_BYTE = 0x0000007f; // Mask value for the least significant byte (LSB)
 
 const uint8_t MAX_SPECIAL_LENGTH = 64; // Special Code-Word Limit
 const uint8_t BACKWARD_STOP_STEPS = 2; // backward steps for safe read buffer
@@ -61,29 +62,29 @@ bool isPunctModified(char c);
 
 uint8_t Build_Dictionary_Table_Compression();
 uint8_t Build_Dictionary_Table_Decompression();
-vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input);
-vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input);
-vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
+vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint64_t input);
+vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint64_t input);
+vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint64_t input);
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes);
 string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead); // new version
 
-uint8_t Mask_Single_Byte(uint32_t number);
-uint32_t Shift_Left_with_One_Inserted(uint32_t number);
-uint32_t Shift_Left_with_Zero_Inserted(uint32_t number);
-uint32_t Shift_Right_Seven_Positions(uint32_t number);
+uint8_t Mask_Single_Byte(uint64_t number);
+uint64_t Shift_Left_with_One_Inserted(uint64_t number);
+uint64_t Shift_Left_with_Zero_Inserted(uint64_t number);
+uint64_t Shift_Right_Seven_Positions(uint64_t number);
 
 uint8_t Compression_Function(const string& inputFile, streampos start, streampos end, const string& outputFile);
 uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameText);
 
-uint32_t Lookup_Function(const string& inputFileNameBin, streampos start, streampos end, 
-    string searchString, int threadIndex, vector<uint32_t>& results);
+uint64_t Lookup_Function(const string& inputFileNameBin, streampos start, streampos end, 
+    string searchString, int threadIndex, vector<uint64_t>& results);
 
-uint32_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, 
-    const string& outputFileNameBin, string searchString, string replaceString, int threadIndex, vector<uint32_t>& results);
+uint64_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, 
+    const string& outputFileNameBin, string searchString, string replaceString, int threadIndex, vector<uint64_t>& results);
 
-// uint32_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, 
-//         const string& outputFileNameBin, string searchString, string replaceString, int threadIndex, vector<uint32_t>& results, char preservedDelimiter);
+// uint64_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, 
+//         const string& outputFileNameBin, string searchString, string replaceString, int threadIndex, vector<uint64_t>& results, char preservedDelimiter);
 
 // Reading a plain text file functions
 uint8_t processFile(const string &filePath);
@@ -119,9 +120,9 @@ uint8_t splitAndProcessBinaryFileForSearchAndReplace(const string &inputFile, co
 
 //********************************** 
 
-uint32_t readCodeWords(vector<uint8_t> bytes);
-uint32_t concatenateBytes(uint32_t final, uint32_t tmp, uint8_t count);
+uint64_t readCodeWords(vector<uint8_t> bytes);
+uint64_t concatenateBytes(uint64_t final, uint64_t tmp, uint8_t count);
 
-uint32_t countLinesInFile(const string &filePath); // read the number of words in the dictionary 
+uint64_t countLinesInFile(const string &filePath); // read the number of words in the dictionary 
 
 

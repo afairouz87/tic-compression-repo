@@ -1,6 +1,0 @@
-Hello, world! This is a single string.
-This is a second line.
-Hello, world! This is a single string.
-This is a second line.
-Hello, world! This is a single string.
-This is a second line.

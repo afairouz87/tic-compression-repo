@@ -98,6 +98,13 @@ int decodedLineCounter = 0;
 // *** For debug and histograms
 uint32_t T1_FREQ = 0, T2_FREQ = 0, T3_FREQ = 0, T4_FREQ = 0, T5_FREQ = 0;
 
+const uint8_t SPACE_BYTE       = Shift_Left_with_Zero_Inserted(SPACE_CODE);
+const uint8_t NEWLINE_BYTE     = Shift_Left_with_Zero_Inserted(NEW_LINE_CODE);
+const uint8_t END_SPECIAL_BYTE = Shift_Left_with_Zero_Inserted(END_SPECIAL_CODE);
+const uint8_t NEXT_SPECIAL_BYTE = Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE);
+
+uint32_t NUMBER_OF_WORDS_DICT = 0;
+
 // *********************************************
 //            Main Function
 // *********************************************
@@ -173,10 +180,10 @@ int main(int argc, char *argv[])
     // Record the start time
     auto start = high_resolution_clock::now();
 
-    uint32_t numberOfWords = countLinesInFile(dictFilename);
-    cout << "Number of lines in the dictionary file: " << numberOfWords << endl;
+    NUMBER_OF_WORDS_DICT = countLinesInFile(dictFilename);
+    cout << "Number of lines in the dictionary file: " << NUMBER_OF_WORDS_DICT << endl;
 
-    dictMapCodeArray = new string[numberOfWords + 10]; // add an extra spaces
+    dictMapCodeArray = new string[NUMBER_OF_WORDS_DICT + 10]; // add an extra spaces
 
     // **** TESTs ****
     // int TMP_NUM = ONE_BYTE_BOUND-1;
@@ -293,7 +300,7 @@ int main(int argc, char *argv[])
 // ------------------------------------------------------
 // ***** Lookup_and_Replace_Function ***********
 
-// Version 4 (Stable)
+// Version 6
 uint32_t Lookup_and_Replace_Function(
     const string &inputFileNameBin,
     streampos start,
@@ -306,6 +313,7 @@ uint32_t Lookup_and_Replace_Function(
 {
     ifstream inFile(inputFileNameBin, ios::binary);
     ofstream outFile(outputFileNameBin, ios::binary | ios::app);
+
     if (!inFile || !outFile)
     {
         cerr << "Error: Could not open file(s) in thread " << threadIndex << endl;
@@ -313,120 +321,535 @@ uint32_t Lookup_and_Replace_Function(
     }
 
     inFile.seekg(start);
+
     const size_t bufferSize = 4096;
     char buffer[bufferSize];
+
     streamoff currentPos = static_cast<streamoff>(start);
 
     vector<uint8_t> lineCodeWords = convertSearchStringToCodeWord(processLineChar(searchString));
     vector<uint8_t> replaceCodeWords = convertSearchStringToCodeWord(processLineChar(replaceString));
 
     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
-    uint16_t replaceCodeWordsSize = static_cast<uint16_t>(replaceCodeWords.size());
     uint32_t matchCount = 0;
     uint16_t byteIndex = 0;
-    vector<uint8_t> tmpCodeWord;
 
-    uint8_t byte = 0;
-    uint32_t toSkip = 0;
+    vector<uint8_t> tmpCodeWord;
 
     while (currentPos < end && inFile)
     {
+        inFile.clear();
+        inFile.seekg(currentPos);
+
         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
         inFile.read(buffer, bytesToRead);
-        size_t bytesRead = inFile.gcount();
+        size_t bytesRead = static_cast<size_t>(inFile.gcount());
 
-        if (bytesRead == bufferSize)
+        if (bytesRead == 0)
+            break;
+
+        size_t i = 0;
+        size_t lastSafePosInBuffer = 0;
+
+        tmpCodeWord.clear();
+
+        while (i < bytesRead)
         {
-            size_t safeEnd = bufferSize;
-            uint8_t stopSteps = 0;
-            for (int i = bufferSize - 1; i >= 0; --i)
+            uint8_t byte = static_cast<uint8_t>(buffer[i]);
+            uint16_t nextByteCode = byte & 1;
+
+            if (byteIndex < lineCodeWordsSize && byte == lineCodeWords[byteIndex])
             {
-                uint8_t byte = static_cast<uint8_t>(buffer[i]);
-                uint8_t code = byte >> 1;
-                if (
-                    code == SPACE_CODE ||
-                    code == NEW_LINE_CODE 
-                    // code == END_SPECIAL_CODE
-                )
+                tmpCodeWord.push_back(byte);
+
+                /*
+                 * Matching path for a special token.
+                 * If the first matched byte is NEXT_SPECIAL_CODE, verify the full
+                 * special-token structure using SPECIAL_CODE_WORD_READER().
+                 */
+                if (byte == Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE))
                 {
-                    stopSteps++;
-                    if(stopSteps == BACKWARD_STOP_STEPS){
-                        safeEnd = i - 1; 
-                        stopSteps = 0;
-                        break;
+                    size_t specialPos = i;
+                    string specialWord = SPECIAL_CODE_WORD_READER(buffer, specialPos, bytesRead);
+
+                    if (specialWord.empty())
+                    {
+                        break; // incomplete special token in current buffer
                     }
-                }
-                
-            }
-            size_t unreadBytes = bytesRead - safeEnd;
-            if (unreadBytes > 0)
-            {
-                inFile.clear();
-                inFile.seekg(-static_cast<streamoff>(unreadBytes), ios::cur);
-                bytesRead = safeEnd;
-            }
-        }
 
-        for (size_t i = 0; (i < bytesRead) && (currentPos < end); ++i, ++currentPos)
-        {
-            byte = static_cast<uint8_t>(buffer[i]);
-            uint16_t nextByteCode = byte % 2;
+                    ++byteIndex;
+                    ++i;
 
-            if (byte == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && byte != lineCodeWords[byteIndex])
-            {
-                if (i + 1 < bytesRead)
-                {
-                    outFile.put(static_cast<char>(byte)); 
-                    i++; currentPos++;
-                    byte = static_cast<uint8_t>(buffer[i]);
-                    outFile.put(static_cast<char>(byte)); 
-                    i++; currentPos++;
-                    // uint8_t skipLength = (static_cast<uint8_t>(buffer[i])) * 2; // Why " *2 "? => each ASCII chaaracter is stored in 2 bytes
-                    uint8_t skipLength = (byte & 0x01111110) >> 1; 
-                    
-                    outFile.write(&buffer[i], skipLength);
-                    i += skipLength - 1;
-                    currentPos += skipLength - 1;
+                    while (i <= specialPos && byteIndex < lineCodeWordsSize)
+                    {
+                        uint8_t cur = static_cast<uint8_t>(buffer[i]);
+                        tmpCodeWord.push_back(cur);
+
+                        if (cur == lineCodeWords[byteIndex])
+                        {
+                            ++byteIndex;
+                            ++i;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+
+                    if (byteIndex == lineCodeWordsSize)
+                    {
+                        outFile.write(
+                            reinterpret_cast<const char *>(replaceCodeWords.data()),
+                            static_cast<streamsize>(replaceCodeWords.size())
+                        );
+                        ++matchCount;
+                    }
+                    else
+                    {
+                        outFile.write(
+                            reinterpret_cast<const char *>(tmpCodeWord.data()),
+                            static_cast<streamsize>(tmpCodeWord.size())
+                        );
+                    }
+
+                    tmpCodeWord.clear();
                     byteIndex = 0;
+                    lastSafePosInBuffer = i;
+                    continue;
                 }
-            }
-            else
-            {
-                if (byte == lineCodeWords[byteIndex])
+
+                ++byteIndex;
+                ++i;
+
+                if (byteIndex == lineCodeWordsSize)
                 {
-                    tmpCodeWord.push_back(byte);
-                    byteIndex++;
-                    if (byteIndex == lineCodeWordsSize) // match (found)
-                    {
-                        outFile.write(reinterpret_cast<const char *>(replaceCodeWords.data()), replaceCodeWords.size());
-                        matchCount++;
-                        byteIndex = 0;
-                        tmpCodeWord.clear();
-                    }
-                }
-                else
-                {
-                    while (nextByteCode == 1 && i + 1 < bytesRead)
-                    {
-                        tmpCodeWord.push_back(byte);
-                        i++; currentPos++;
-                        byte = static_cast<uint8_t>(buffer[i]);
-                        nextByteCode = byte % 2;
-                    }
-                    tmpCodeWord.push_back(byte);
-                    outFile.write(reinterpret_cast<const char *>(tmpCodeWord.data()), tmpCodeWord.size());
+                    outFile.write(
+                        reinterpret_cast<const char *>(replaceCodeWords.data()),
+                        static_cast<streamsize>(replaceCodeWords.size())
+                    );
+                    ++matchCount;
+
                     tmpCodeWord.clear();
                     byteIndex = 0;
                 }
+
+                lastSafePosInBuffer = i;
+            }
+            else
+            {
+                /*
+                 * Non-matching path.
+                 * First flush any partial match accumulated so far.
+                 */
+                if (!tmpCodeWord.empty())
+                {
+                    outFile.write(
+                        reinterpret_cast<const char *>(tmpCodeWord.data()),
+                        static_cast<streamsize>(tmpCodeWord.size())
+                    );
+                    tmpCodeWord.clear();
+                }
+
+                /*
+                 * If current byte starts a special token, copy the complete special
+                 * token as-is. Do not manually compute the special-token length.
+                 */
+                if (byte == Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE))
+                {
+                    size_t specialPos = i;
+                    string specialWord = SPECIAL_CODE_WORD_READER(buffer, specialPos, bytesRead);
+
+                    if (specialWord.empty())
+                    {
+                        break; // incomplete special token
+                    }
+
+                    outFile.write(
+                        &buffer[i],
+                        static_cast<streamsize>(specialPos - i + 1)
+                    );
+
+                    i = specialPos + 1;
+                    lastSafePosInBuffer = i;
+                    byteIndex = 0;
+                    continue;
+                }
+
+                /*
+                 * Copy the remainder of the current normal codeword.
+                 */
+                size_t startPos = i;
+
+                if (nextByteCode == 1)
+                {
+                    do
+                    {
+                        ++i;
+
+                        if (i >= bytesRead)
+                            break;
+
+                        nextByteCode = static_cast<uint16_t>(
+                            static_cast<uint8_t>(buffer[i]) & 1
+                        );
+
+                    } while (nextByteCode == 1);
+
+                    if (i >= bytesRead)
+                        break;
+
+                    ++i; // consume final byte with LSB = 0
+                }
+                else
+                {
+                    ++i;
+                }
+
+                outFile.write(
+                    &buffer[startPos],
+                    static_cast<streamsize>(i - startPos)
+                );
+
+                lastSafePosInBuffer = i;
+                byteIndex = 0;
             }
         }
+
+        if (lastSafePosInBuffer == 0)
+        {
+            cerr << "Error[PIC]: No progress in Lookup_and_Replace_Function(). "
+                 << "currentPos=" << currentPos
+                 << ", bytesRead=" << bytesRead
+                 << endl;
+            return -1;
+        }
+
+        currentPos += static_cast<streamoff>(lastSafePosInBuffer);
     }
 
     inFile.close();
     outFile.close();
+
     results[threadIndex] = matchCount;
     return 0;
 }
+
+
+// Version 5
+// uint32_t Lookup_and_Replace_Function(
+//     const string &inputFileNameBin,
+//     streampos start,
+//     streampos end,
+//     const string &outputFileNameBin,
+//     string searchString,
+//     string replaceString,
+//     int threadIndex,
+//     vector<uint32_t> &results)
+// {
+//     ifstream inFile(inputFileNameBin, ios::binary);
+//     ofstream outFile(outputFileNameBin, ios::binary | ios::app);
+//     if (!inFile || !outFile)
+//     {
+//         cerr << "Error: Could not open file(s) in thread " << threadIndex << endl;
+//         return -1;
+//     }
+
+//     inFile.seekg(start);
+//     const size_t bufferSize = 4096;
+//     char buffer[bufferSize];
+//     streamoff currentPos = static_cast<streamoff>(start);
+
+//     vector<uint8_t> lineCodeWords = convertSearchStringToCodeWord(processLineChar(searchString));
+//     vector<uint8_t> replaceCodeWords = convertSearchStringToCodeWord(processLineChar(replaceString));
+
+//     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
+//     uint32_t matchCount = 0;
+//     uint16_t byteIndex = 0;
+//     vector<uint8_t> tmpCodeWord;
+
+//     while (currentPos < end && inFile)
+//     {
+//         inFile.clear();
+//         inFile.seekg(currentPos);
+
+//         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
+//         inFile.read(buffer, bytesToRead);
+//         size_t bytesRead = inFile.gcount();
+
+//         if (bytesRead == 0)
+//             break;
+
+//         size_t i = 0;
+//         size_t lastSafePosInBuffer = 0;
+//         tmpCodeWord.clear();
+
+//         while (i < bytesRead)
+//         {
+//             uint8_t byte = static_cast<uint8_t>(buffer[i]);
+//             uint16_t nextByteCode = byte & 1;
+
+//             if (byteIndex < lineCodeWordsSize && byte == lineCodeWords[byteIndex])
+//             {
+//                 tmpCodeWord.push_back(byte);
+
+//                 // If matching a special-code search pattern, ensure the full special token is present
+//                 if (byte == Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE))
+//                 {
+//                     size_t specialPos = i;
+//                     string specialWord = SPECIAL_CODE_WORD_READER(buffer, specialPos, bytesRead);
+
+//                     if (specialWord.empty()) {
+//                         break;
+//                     }
+
+//                     ++byteIndex;
+//                     ++i;
+
+//                     while (i <= specialPos && byteIndex < lineCodeWordsSize)
+//                     {
+//                         uint8_t cur = static_cast<uint8_t>(buffer[i]);
+//                         tmpCodeWord.push_back(cur);
+
+//                         if (cur == lineCodeWords[byteIndex]) {
+//                             ++byteIndex;
+//                             ++i;
+//                         } else {
+//                             break;
+//                         }
+//                     }
+
+//                     if (byteIndex == lineCodeWordsSize)
+//                     {
+//                         outFile.write(reinterpret_cast<const char *>(replaceCodeWords.data()), replaceCodeWords.size());
+//                         matchCount++;
+//                     }
+//                     else
+//                     {
+//                         outFile.write(reinterpret_cast<const char *>(tmpCodeWord.data()), tmpCodeWord.size());
+//                     }
+
+//                     tmpCodeWord.clear();
+//                     byteIndex = 0;
+//                     lastSafePosInBuffer = i;
+//                     continue;
+//                 }
+
+//                 ++byteIndex;
+//                 ++i;
+
+//                 if (byteIndex == lineCodeWordsSize)
+//                 {
+//                     outFile.write(reinterpret_cast<const char *>(replaceCodeWords.data()), replaceCodeWords.size());
+//                     matchCount++;
+//                     tmpCodeWord.clear();
+//                     byteIndex = 0;
+//                 }
+
+//                 lastSafePosInBuffer = i;
+//             }
+//             else
+//             {
+//                 // If current byte begins a special token and we are not matching it,
+//                 // copy the whole special token safely.
+//                 if (byte == Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE))
+//                 {
+//                     size_t specialPos = i;
+//                     string specialWord = SPECIAL_CODE_WORD_READER(buffer, specialPos, bytesRead);
+
+//                     if (specialWord.empty()) {
+//                         break;
+//                     }
+
+//                     outFile.write(&buffer[i], static_cast<streamsize>(specialPos - i + 1));
+//                     i = specialPos + 1;
+//                     lastSafePosInBuffer = i;
+
+//                     tmpCodeWord.clear();
+//                     byteIndex = 0;
+//                     continue;
+//                 }
+
+//                 // Flush partial match first
+//                 if (!tmpCodeWord.empty()) {
+//                     outFile.write(reinterpret_cast<const char *>(tmpCodeWord.data()), tmpCodeWord.size());
+//                     tmpCodeWord.clear();
+//                 }
+
+//                 // Copy the remainder of the current normal codeword
+//                 size_t startPos = i;
+
+//                 if (nextByteCode == 1)
+//                 {
+//                     do {
+//                         ++i;
+//                         if (i >= bytesRead)
+//                             break;
+//                         nextByteCode = static_cast<uint16_t>(static_cast<uint8_t>(buffer[i])) & 1;
+//                     } while (nextByteCode == 1);
+
+//                     if (i >= bytesRead)
+//                         break;
+
+//                     ++i; // consume final byte with LSB = 0
+//                 }
+//                 else
+//                 {
+//                     ++i;
+//                 }
+
+//                 outFile.write(&buffer[startPos], static_cast<streamsize>(i - startPos));
+//                 lastSafePosInBuffer = i;
+//                 byteIndex = 0;
+//             }
+//         }
+
+//         currentPos += static_cast<streamoff>(lastSafePosInBuffer);
+
+//         if (lastSafePosInBuffer == 0) {
+//             cerr << "Error[PIC]: No progress in Lookup_and_Replace_Function()." << endl;
+//             return -1;
+//         }
+//     }
+
+//     inFile.close();
+//     outFile.close();
+//     results[threadIndex] = matchCount;
+//     return 0;
+// }
+
+// Version 4 (Stable)
+// uint32_t Lookup_and_Replace_Function(
+//     const string &inputFileNameBin,
+//     streampos start,
+//     streampos end,
+//     const string &outputFileNameBin,
+//     string searchString,
+//     string replaceString,
+//     int threadIndex,
+//     vector<uint32_t> &results)
+// {
+//     ifstream inFile(inputFileNameBin, ios::binary);
+//     ofstream outFile(outputFileNameBin, ios::binary | ios::app);
+//     if (!inFile || !outFile)
+//     {
+//         cerr << "Error: Could not open file(s) in thread " << threadIndex << endl;
+//         return -1;
+//     }
+
+//     inFile.seekg(start);
+//     const size_t bufferSize = 4096;
+//     char buffer[bufferSize];
+//     streamoff currentPos = static_cast<streamoff>(start);
+
+//     vector<uint8_t> lineCodeWords = convertSearchStringToCodeWord(processLineChar(searchString));
+//     vector<uint8_t> replaceCodeWords = convertSearchStringToCodeWord(processLineChar(replaceString));
+
+//     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
+//     uint16_t replaceCodeWordsSize = static_cast<uint16_t>(replaceCodeWords.size());
+//     uint32_t matchCount = 0;
+//     uint16_t byteIndex = 0;
+//     vector<uint8_t> tmpCodeWord;
+
+//     uint8_t byte = 0;
+//     uint32_t toSkip = 0;
+
+//     while (currentPos < end && inFile)
+//     {
+//         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
+//         inFile.read(buffer, bytesToRead);
+//         size_t bytesRead = inFile.gcount();
+
+//         if (bytesRead == bufferSize)
+//         {
+//             size_t safeEnd = bufferSize;
+//             uint8_t stopSteps = 0;
+//             for (int i = bufferSize - 1; i >= 0; --i)
+//             {
+//                 uint8_t byte = static_cast<uint8_t>(buffer[i]);
+//                 uint8_t code = byte >> 1;
+//                 if (
+//                     byte == SPACE_BYTE ||
+//                     byte == NEWLINE_BYTE
+//                 )
+//                 {
+//                     stopSteps++;
+//                     if(stopSteps == BACKWARD_STOP_STEPS){
+//                         safeEnd = i - 1; 
+//                         stopSteps = 0;
+//                         break;
+//                     }
+//                 }
+                
+//             }
+//             size_t unreadBytes = bytesRead - safeEnd;
+//             if (unreadBytes > 0)
+//             {
+//                 inFile.clear();
+//                 inFile.seekg(-static_cast<streamoff>(unreadBytes), ios::cur);
+//                 bytesRead = safeEnd;
+//             }
+//         }
+
+//         for (size_t i = 0; (i < bytesRead) && (currentPos < end); ++i, ++currentPos)
+//         {
+//             byte = static_cast<uint8_t>(buffer[i]);
+//             uint16_t nextByteCode = byte & 1;
+
+//             if (byte == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && byte != lineCodeWords[byteIndex])
+//             {
+//                 if (i + 1 < bytesRead)
+//                 {
+//                     outFile.put(static_cast<char>(byte)); 
+//                     i++; currentPos++;
+//                     byte = static_cast<uint8_t>(buffer[i]);
+//                     outFile.put(static_cast<char>(byte)); 
+//                     i++; currentPos++;
+//                     // uint8_t skipLength = (static_cast<uint8_t>(buffer[i])) * 2; // Why " *2 "? => each ASCII chaaracter is stored in 2 bytes
+//                     uint8_t skipLength = (byte & 0x01111110) >> 1; 
+                    
+//                     outFile.write(&buffer[i], skipLength);
+//                     i += skipLength - 1;
+//                     currentPos += skipLength - 1;
+//                     byteIndex = 0;
+//                 }
+//             }
+//             else
+//             {
+//                 if (byte == lineCodeWords[byteIndex])
+//                 {
+//                     tmpCodeWord.push_back(byte);
+//                     byteIndex++;
+//                     if (byteIndex == lineCodeWordsSize) // match (found)
+//                     {
+//                         outFile.write(reinterpret_cast<const char *>(replaceCodeWords.data()), replaceCodeWords.size());
+//                         matchCount++;
+//                         byteIndex = 0;
+//                         tmpCodeWord.clear();
+//                     }
+//                 }
+//                 else
+//                 {
+//                     while (nextByteCode == 1 && i + 1 < bytesRead)
+//                     {
+//                         tmpCodeWord.push_back(byte);
+//                         i++; currentPos++;
+//                         byte = static_cast<uint8_t>(buffer[i]);
+//                         nextByteCode = byte & 1;
+//                     }
+//                     tmpCodeWord.push_back(byte);
+//                     outFile.write(reinterpret_cast<const char *>(tmpCodeWord.data()), tmpCodeWord.size());
+//                     tmpCodeWord.clear();
+//                     byteIndex = 0;
+//                 }
+//             }
+//         }
+//     }
+
+//     inFile.close();
+//     outFile.close();
+//     results[threadIndex] = matchCount;
+//     return 0;
+// }
 
 
 
@@ -434,8 +857,7 @@ uint32_t Lookup_and_Replace_Function(
 // ***** Lookup_Function ***********
 
 
-
-// Version 3.1 (Stable)
+// Version 5
 uint32_t Lookup_Function(
     const string &inputFileNameBin,
     streampos start,
@@ -452,94 +874,438 @@ uint32_t Lookup_Function(
     }
 
     inFile.seekg(start);
+
     const size_t bufferSize = 4096;
     char buffer[bufferSize];
     streamoff currentPos = static_cast<streamoff>(start);
 
     uint32_t matchCount = 0;
     uint16_t byteIndex = 0;
+
     vector<uint8_t> lineCodeWords = convertSearchStringToCodeWord(processLineChar(searchString));
     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
 
-    uint8_t byte = 0;
-    uint32_t toSkip = 0;
-
     while (currentPos < end && inFile)
     {
+        inFile.clear();
+        inFile.seekg(currentPos);
+
         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
         inFile.read(buffer, bytesToRead);
-        size_t bytesRead = inFile.gcount();
+        size_t bytesRead = static_cast<size_t>(inFile.gcount());
 
-        // If we filled the buffer, find a safe break point
-        if (bytesRead == bufferSize)
+        if (bytesRead == 0)
+            break;
+
+        size_t i = 0;
+        size_t lastSafePosInBuffer = 0;
+
+        while (i < bytesRead)
         {
-            size_t safeEnd = bufferSize;
-            for (int i = bufferSize - 1; i >= 0; --i)
-            {
-                if (buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6) // reserved code-words
-                {
-                    safeEnd = i;
-                    break;
-                }
-            }
-            // Adjust file position to re-read the skipped bytes in the next loop
-            size_t unreadBytes = bytesRead - safeEnd;
-            if (unreadBytes > 0)
-            {
-                inFile.clear(); // clear eofbit if set
-                inFile.seekg(-static_cast<streamoff>(unreadBytes), ios::cur);
-                bytesRead = safeEnd;
-            }
-        }
+            uint8_t byte = static_cast<uint8_t>(buffer[i]);
+            uint16_t nextByteCode = byte & 1;
 
-        for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
-        {
-            byte = static_cast<uint8_t>(buffer[i]);
-            uint16_t nextByteCode = byte % 2;
-
-            if (byte == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && byte != lineCodeWords[byteIndex])
+            if (byteIndex < lineCodeWordsSize && byte == lineCodeWords[byteIndex])
             {
-                if (i + 1 >= bytesRead) {
-                    cerr << "Error - L: Not enough bytes to read sizeByte!\n";
-                    exit(1);
-                }
-                else // (i + 1 < bytesRead)
+                /*
+                 * Matching path.
+                 * If the matched byte is NEXT_SPECIAL_CODE, verify that the full
+                 * special token is available using SPECIAL_CODE_WORD_READER().
+                 */
+                if (byte == Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE))
                 {
-                    toSkip = static_cast<uint8_t>(buffer[i + 1]) * 2; // Why " *2 "? => each ASCII chaaracter is stored in 2 bytes
-                    i += toSkip + 1;
-                    currentPos += toSkip + 1;
+                    size_t specialPos = i;
+                    string specialWord = SPECIAL_CODE_WORD_READER(buffer, specialPos, bytesRead);
+
+                    if (specialWord.empty())
+                    {
+                        break; // incomplete special token in current buffer
+                    }
+
+                    /*
+                     * Continue byte-level matching through the complete special-token
+                     * bytes, from i to specialPos inclusive.
+                     */
+                    while (i <= specialPos && byteIndex < lineCodeWordsSize)
+                    {
+                        uint8_t cur = static_cast<uint8_t>(buffer[i]);
+
+                        if (cur == lineCodeWords[byteIndex])
+                        {
+                            ++byteIndex;
+                            ++i;
+                        }
+                        else
+                        {
+                            byteIndex = 0;
+                            break;
+                        }
+                    }
+
+                    if (byteIndex == lineCodeWordsSize)
+                    {
+                        ++matchCount;
+                        byteIndex = 0;
+                    }
+
+                    lastSafePosInBuffer = i;
+                    continue;
+                }
+
+                ++byteIndex;
+                ++i;
+                lastSafePosInBuffer = i;
+
+                if (byteIndex == lineCodeWordsSize)
+                {
+                    ++matchCount;
                     byteIndex = 0;
                 }
             }
             else
             {
-                if (byte == lineCodeWords[byteIndex])
+                /*
+                 * Non-matching path.
+                 * If current byte starts a special token, skip the whole special token
+                 * using SPECIAL_CODE_WORD_READER(). No direct length calculation is used.
+                 */
+                if (byte == Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE))
                 {
-                    byteIndex++;
+                    size_t specialPos = i;
+                    string specialWord = SPECIAL_CODE_WORD_READER(buffer, specialPos, bytesRead);
+
+                    if (specialWord.empty())
+                    {
+                        break; // incomplete special token
+                    }
+
+                    i = specialPos + 1;   // move past the special-code boundary byte
+                    lastSafePosInBuffer = i;
+                    byteIndex = 0;
+                    continue;
                 }
-                else if (nextByteCode == 1)
+
+                /*
+                 * Skip the remainder of the current normal codeword.
+                 */
+                if (nextByteCode == 1)
                 {
-                    do {
-                        i++; currentPos++;
-                        nextByteCode = static_cast<uint16_t>(buffer[i]) % 2;
+                    do
+                    {
+                        ++i;
+
+                        if (i >= bytesRead)
+                            break;
+
+                        nextByteCode = static_cast<uint16_t>(
+                            static_cast<uint8_t>(buffer[i]) & 1
+                        );
+
                     } while (nextByteCode == 1);
 
-                    byteIndex = 0;
+                    if (i >= bytesRead)
+                        break;
+
+                    ++i; // consume final byte with LSB = 0
+                    lastSafePosInBuffer = i;
+                }
+                else
+                {
+                    ++i;
+                    lastSafePosInBuffer = i;
                 }
 
-                if (byteIndex == lineCodeWordsSize)
-                {
-                    byteIndex = 0;
-                    matchCount++;
-                }
+                byteIndex = 0;
             }
         }
+
+        if (lastSafePosInBuffer == 0)
+        {
+            cerr << "Error[PIC]: No progress in Lookup_Function(). "
+                 << "currentPos=" << currentPos
+                 << ", bytesRead=" << bytesRead
+                 << endl;
+            return -1;
+        }
+
+        currentPos += static_cast<streamoff>(lastSafePosInBuffer);
     }
 
     inFile.close();
+
     results[threadIndex] = matchCount;
     return 0;
 }
+
+// Version 4
+// uint32_t Lookup_Function(
+//     const string &inputFileNameBin,
+//     streampos start,
+//     streampos end,
+//     string searchString,
+//     int threadIndex,
+//     vector<uint32_t> &results)
+// {
+//     ifstream inFile(inputFileNameBin, ios::binary);
+//     if (!inFile)
+//     {
+//         cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
+//         return -1;
+//     }
+
+//     inFile.seekg(start);
+//     const size_t bufferSize = 4096;
+//     char buffer[bufferSize];
+//     streamoff currentPos = static_cast<streamoff>(start);
+
+//     uint32_t matchCount = 0;
+//     uint16_t byteIndex = 0;
+//     vector<uint8_t> lineCodeWords = convertSearchStringToCodeWord(processLineChar(searchString));
+//     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
+
+//     while (currentPos < end && inFile)
+//     {
+//         inFile.clear();
+//         inFile.seekg(currentPos);
+
+//         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
+//         inFile.read(buffer, bytesToRead);
+//         size_t bytesRead = inFile.gcount();
+
+//         if (bytesRead == 0)
+//             break;
+
+//         size_t i = 0;
+//         size_t lastSafePosInBuffer = 0;
+
+//         while (i < bytesRead)
+//         {
+//             uint8_t byte = static_cast<uint8_t>(buffer[i]);
+//             uint16_t nextByteCode = byte & 1;
+
+//             if (byteIndex < lineCodeWordsSize && byte == lineCodeWords[byteIndex])
+//             {
+//                 // If matching a special-code search pattern, ensure the full special code word exists
+//                 if (byte == Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE))
+//                 {
+//                     size_t specialPos = i;
+//                     string specialWord = SPECIAL_CODE_WORD_READER(buffer, specialPos, bytesRead);
+
+//                     if (specialWord.empty()) {
+//                         break; // incomplete special token
+//                     }
+
+//                     // specialPos points to END_SPECIAL_CODE
+//                     for (; i <= specialPos; ++i) {
+//                         if (byteIndex < lineCodeWordsSize && static_cast<uint8_t>(buffer[i]) == lineCodeWords[byteIndex])
+//                             ++byteIndex;
+//                         else {
+//                             byteIndex = 0;
+//                             break;
+//                         }
+//                     }
+
+//                     if (byteIndex == lineCodeWordsSize)
+//                     {
+//                         matchCount++;
+//                         byteIndex = 0;
+//                     }
+
+//                     lastSafePosInBuffer = i;
+//                     continue;
+//                 }
+
+//                 ++byteIndex;
+//                 ++i;
+//                 lastSafePosInBuffer = i;
+
+//                 if (byteIndex == lineCodeWordsSize)
+//                 {
+//                     matchCount++;
+//                     byteIndex = 0;
+//                 }
+//             }
+//             else
+//             {
+//                 // If the current byte begins a special token and we are not matching it,
+//                 // skip the whole special token safely.
+//                 if (byte == Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE))
+//                 {
+//                     size_t specialPos = i;
+//                     string specialWord = SPECIAL_CODE_WORD_READER(buffer, specialPos, bytesRead);
+
+//                     if (specialWord.empty()) {
+//                         break; // incomplete special token
+//                     }
+
+//                     i = specialPos + 1;   // move past END_SPECIAL_CODE
+//                     lastSafePosInBuffer = i;
+//                     byteIndex = 0;
+//                     continue;
+//                 }
+                
+
+//                 // Skip the remainder of the current normal codeword
+//                 if (nextByteCode == 1)
+//                 {
+//                     do {
+//                         ++i;
+//                         if (i >= bytesRead)
+//                             break;
+//                         nextByteCode = static_cast<uint16_t>(static_cast<uint8_t>(buffer[i])) & 1;
+//                     } while (nextByteCode == 1);
+
+//                     if (i >= bytesRead)
+//                         break;
+
+//                     ++i; // consume final byte with LSB = 0
+//                     lastSafePosInBuffer = i;
+//                 }
+//                 else
+//                 {
+//                     ++i;
+//                     lastSafePosInBuffer = i;
+//                 }
+
+//                 byteIndex = 0;
+//             }
+//         }
+
+//         currentPos += static_cast<streamoff>(lastSafePosInBuffer);
+
+//         if (lastSafePosInBuffer == 0) {
+//             cerr << "Error[PIC]: No progress in Lookup_Function()." << endl;
+//             return -1;
+//         }
+//     }
+
+//     inFile.close();
+//     results[threadIndex] = matchCount;
+//     return 0;
+// }
+
+
+// Version 3.1 (Stable)
+// uint32_t Lookup_Function(
+//     const string &inputFileNameBin,
+//     streampos start,
+//     streampos end,
+//     string searchString,
+//     int threadIndex,
+//     vector<uint32_t> &results)
+// {
+//     ifstream inFile(inputFileNameBin, ios::binary);
+//     if (!inFile)
+//     {
+//         cerr << "Error: Could not open file " << inputFileNameBin << " for reading." << endl;
+//         return -1;
+//     }
+
+//     inFile.seekg(start);
+//     const size_t bufferSize = 4096;
+//     char buffer[bufferSize];
+//     streamoff currentPos = static_cast<streamoff>(start);
+
+//     uint32_t matchCount = 0;
+//     uint16_t byteIndex = 0;
+//     vector<uint8_t> lineCodeWords = convertSearchStringToCodeWord(processLineChar(searchString));
+//     uint16_t lineCodeWordsSize = static_cast<uint16_t>(lineCodeWords.size());
+
+//     uint8_t byte = 0;
+//     uint32_t toSkip = 0;
+
+//     while (currentPos < end && inFile)
+//     {
+//         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
+//         inFile.read(buffer, bytesToRead);
+//         size_t bytesRead = inFile.gcount();
+
+//         // If we filled the buffer, find a safe break point
+//         if (bytesRead == bufferSize)
+//         {
+//             size_t safeEnd = bufferSize;
+//             uint8_t stopSteps = 0;
+//             for (int i = bufferSize - 1; i >= 0; --i)
+//             {
+
+//                 uint8_t byte = static_cast<uint8_t>(buffer[i]);
+//                 uint8_t code = byte >> 1;
+//                 if (
+//                     byte == SPACE_BYTE ||
+//                     byte == NEWLINE_BYTE
+//                 )
+//                 {
+//                     stopSteps++;
+//                     if(stopSteps == BACKWARD_STOP_STEPS){
+//                         safeEnd = i - 1; 
+//                         stopSteps = 0;
+//                         break;
+//                     }
+//                 }
+//                 // if (buffer[i] == 0x0 || buffer[i] == 0x2 || buffer[i] == 0x4 || buffer[i] == 0x6) // reserved code-words
+//                 // {
+//                 //     safeEnd = i;
+//                 //     break;
+//                 // }
+//             }
+//             // Adjust file position to re-read the skipped bytes in the next loop
+//             size_t unreadBytes = bytesRead - safeEnd;
+//             if (unreadBytes > 0)
+//             {
+//                 inFile.clear(); // clear eofbit if set
+//                 inFile.seekg(-static_cast<streamoff>(unreadBytes), ios::cur);
+//                 bytesRead = safeEnd;
+//             }
+//         }
+
+//         for (size_t i = 0; i < bytesRead && currentPos < end; ++i, ++currentPos)
+//         {
+//             byte = static_cast<uint8_t>(buffer[i]);
+//             uint16_t nextByteCode = byte & 1;
+
+//             if (byte == (Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)) && byte != lineCodeWords[byteIndex])
+//             {
+//                 if (i + 1 >= bytesRead) {
+//                     cerr << "Error - L: Not enough bytes to read sizeByte!\n";
+//                     exit(1);
+//                 }
+//                 else // (i + 1 < bytesRead)
+//                 {
+//                     toSkip = static_cast<uint8_t>(buffer[i + 1]) * 2; // Why " *2 "? => each ASCII chaaracter is stored in 2 bytes
+//                     i += toSkip + 1;
+//                     currentPos += toSkip + 1;
+//                     byteIndex = 0;
+//                 }
+//             }
+//             else
+//             {
+//                 if (byte == lineCodeWords[byteIndex])
+//                 {
+//                     byteIndex++;
+//                 }
+//                 else if (nextByteCode == 1)
+//                 {
+//                     do {
+//                         i++; currentPos++;
+//                         nextByteCode = static_cast<uint16_t>(buffer[i]) & 1;
+//                     } while (nextByteCode == 1);
+
+//                     byteIndex = 0;
+//                 }
+
+//                 if (byteIndex == lineCodeWordsSize)
+//                 {
+//                     byteIndex = 0;
+//                     matchCount++;
+//                 }
+//             }
+//         }
+//     }
+
+//     inFile.close();
+//     results[threadIndex] = matchCount;
+//     return 0;
+// }
 
 
 
@@ -1073,79 +1839,101 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
 // ---- Decompression Function ------
 
 
-
-// Version 3 (Stable)
-uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, streampos end, const string &outputFileNameText)
+// Version 4
+uint8_t Decompression_Function(
+    const string &inputFileNameBin,
+    streampos start,
+    streampos end,
+    const string &outputFileNameText)
 {
     ifstream inFile(inputFileNameBin, ios::binary);
     ofstream outFile(outputFileNameText, ios::app);
+
     if (!inFile || !outFile)
     {
         cerr << "Error opening files for decompression." << endl;
         return -1;
     }
 
-    inFile.seekg(start);
-    const size_t bufferSize = 4096;
+    const size_t mainChunkSize = 4096;
+    const size_t lookAheadSize = 128;
+    const size_t bufferSize = mainChunkSize + lookAheadSize;
+
     char buffer[bufferSize];
+
     streamoff currentPos = static_cast<streamoff>(start);
+    const streamoff endPos = static_cast<streamoff>(end);
 
     uint32_t tmpSerial = 0, finalSerial = 0;
     string word;
-    uint8_t nextByte;
+    uint8_t nextByte = 0;
     bool NEXT_CAP = false;
     uint32_t count = 0;
 
-    while (currentPos < end && inFile)
+    while (currentPos < endPos && inFile)
     {
-        inFile.clear(); // Clear any EOF/failure flags before seeking
-        inFile.seekg(currentPos); // roll back to current position in case of a failure of buffer read
+        const streamoff oldPos = currentPos;
 
-        size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
+        inFile.clear();
+        inFile.seekg(currentPos);
+
+        size_t bytesToRead = static_cast<size_t>(
+            min<streamoff>(bufferSize, endPos - currentPos)
+        );
+
         inFile.read(buffer, bytesToRead);
-        size_t bytesRead = inFile.gcount();
+        size_t bytesRead = static_cast<size_t>(inFile.gcount());
 
-        if (bytesRead == bufferSize)
+        if (bytesRead == 0)
         {
-            size_t safeEnd = bufferSize;
-            uint8_t stopSteps = 0;
-            for (int i = bufferSize - 1; i >= 0; --i)
-            {
-                uint8_t byte = static_cast<uint8_t>(buffer[i]);
-                uint8_t code = byte >> 1;
-                if (
-                    code == SPACE_CODE ||
-                    code == NEW_LINE_CODE 
-                    // code == END_SPECIAL_CODE
-                )
-                {
-                    stopSteps++;
-                    if(stopSteps == BACKWARD_STOP_STEPS){
-                        safeEnd = i - 1; 
-                        stopSteps = 0;
-                        break;
-                    }
-                }
-                
-            }
-            size_t unreadBytes = bytesRead - safeEnd;
-            if (unreadBytes > 0)
-            {
-                inFile.clear();
-                inFile.seekg(-static_cast<streamoff>(unreadBytes), ios::cur);
-                bytesRead = safeEnd;
-            }
+            cerr << "Error[PIC]: bytesRead == 0 in Decompression_Function(). "
+                 << "currentPos=" << currentPos
+                 << ", end=" << endPos << endl;
+            return -1;
         }
 
-        for (size_t i = 0; i < bytesRead && currentPos < end;)
+        const bool hasLookAhead = (bytesRead > mainChunkSize);
+        const size_t tokenStartLimit = hasLookAhead ? mainChunkSize : bytesRead;
+
+        size_t i = 0;
+        size_t consumedBytes = 0;
+
+        tmpSerial = 0;
+        finalSerial = 0;
+        count = 0;
+
+        while (i < bytesRead)
         {
-            uint8_t byte = static_cast<uint8_t>(buffer[i]);
-            nextByte = byte % 2;
-            byte >>= 1;
+            /*
+             * Strict pointer rule:
+             * Start a new token only inside the main 4096-byte region.
+             * The lookahead region is only for completing a token that
+             * already started inside the main region.
+             */
+            if (count == 0 && i >= tokenStartLimit)
+                break;
+
+            const size_t tokenStart = i;
+
+            uint8_t rawByte = static_cast<uint8_t>(buffer[i]);
+            nextByte = rawByte & 1;
+            uint8_t byte = rawByte >> 1;
 
             if (nextByte == 0)
             {
-                finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, byte, count));
+                finalSerial = static_cast<uint32_t>(
+                    concatenateBytes(finalSerial, byte, count)
+                );
+
+                if (count > 3)
+                {
+                    cerr << "Error[PIC]: Invalid codeword length. "
+                         << "count=" << count
+                         << ", currentPos=" << currentPos
+                         << ", i=" << i
+                         << ", bytesRead=" << bytesRead << endl;
+                    return -1;
+                }
 
                 if (count == 1)
                     finalSerial += TWO_BYTE_OFFSET;
@@ -1157,66 +1945,288 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
                 if (finalSerial == SPACE_CODE)
                 {
                     outFile << " ";
+                    ++i;
+                    consumedBytes = i;
                 }
                 else if (finalSerial == NEW_LINE_CODE)
                 {
                     outFile << "\n";
                     ++decodedLineCounter;
+                    ++i;
+                    consumedBytes = i;
                 }
                 else if (finalSerial == NEXT_CAPITAL_CODE)
                 {
                     NEXT_CAP = true;
+                    ++i;
+                    consumedBytes = i;
                 }
                 else if (finalSerial == NEXT_SPECIAL_CODE)
                 {
-                    size_t start_i = i;
-                    string word = SPECIAL_CODE_WORD_READER(buffer, i, bytesRead);
+                    /*
+                     * SPECIAL_CODE_WORD_READER contract assumed:
+                     * - input i points to NEXT_SPECIAL_CODE
+                     * - on success, i points to END_SPECIAL_CODE
+                     * - on failure, returns "" and restores i
+                     */
+                    string specialWord = SPECIAL_CODE_WORD_READER(buffer, i, bytesRead);
 
-                    if (word.empty()) {
-                        // i = start_i;
-                        i = start_i - 1;
-                        currentPos--;
-                        break;
+                    if (specialWord.empty())
+                    {
+                        cerr << "Error[PIC]: Incomplete/invalid special code word. "
+                             << "tokenStart=" << tokenStart
+                             << ", currentPos=" << currentPos
+                             << ", i=" << i
+                             << ", bytesRead=" << bytesRead
+                             << ", tokenStartLimit=" << tokenStartLimit
+                             << endl;
+                        return -1;
                     }
 
-                    outFile << word;
-                    i++; // to skip the END_SPECIAL_CODE byteCode 
-                    tmpSerial = finalSerial = 0;
+                    outFile << specialWord;
+
+                    ++i;                 // move past END_SPECIAL_CODE
+                    consumedBytes = i;   // exact bytes consumed from buffer start
+
+                    tmpSerial = 0;
+                    finalSerial = 0;
                     count = 0;
-                    currentPos += (i - start_i);  // update currentPos manually
-                    continue; // updated currentPos in the previous statement, and already advanced i inside reader
+                    continue;
                 }
                 else
                 {
+                    /*
+                     * If dictMapCodeArray is a raw pointer, replace
+                     * dictMapCodeArraySize with your actual dictionary-size variable.
+                     */
+                    if (finalSerial >= NUMBER_OF_WORDS_DICT)
+                    {
+                        cerr << "Error[PIC]: finalSerial out of range. "
+                             << "finalSerial=" << finalSerial
+                             << ", dictSize=" << NUMBER_OF_WORDS_DICT
+                             << ", currentPos=" << currentPos
+                             << ", i=" << i
+                             << ", bytesRead=" << bytesRead
+                             << ", count=" << count << endl;
+                        return -1;
+                    }
+
                     word = dictMapCodeArray[finalSerial];
+
                     if (NEXT_CAP)
                     {
-                        word[0] = toupper(word[0]);
+                        if (!word.empty())
+                            word[0] = static_cast<char>(
+                                toupper(static_cast<unsigned char>(word[0]))
+                            );
                         NEXT_CAP = false;
                     }
+
                     outFile << word;
+                    ++i;
+                    consumedBytes = i;
                 }
 
-                tmpSerial = finalSerial = 0;
+                tmpSerial = 0;
+                finalSerial = 0;
                 count = 0;
-                ++i; // advance only here
             }
             else
             {
+                if (count >= 4)
+                {
+                    cerr << "Error[PIC]: Codeword continuation exceeded maximum length. "
+                         << "count=" << count
+                         << ", currentPos=" << currentPos
+                         << ", i=" << i
+                         << ", bytesRead=" << bytesRead
+                         << ", rawByte=" << unsigned(rawByte) << endl;
+                    return -1;
+                }
+
                 finalSerial = concatenateBytes(finalSerial, byte, count);
                 count++;
                 ++i;
-            }
 
-            ++currentPos;
+                /*
+                 * Do not update consumedBytes here.
+                 * The token is incomplete until a byte with LSB=0 is processed.
+                 */
+            }
         }
 
+        if (consumedBytes == 0)
+        {
+            cerr << "Error[PIC]: No progress in Decompression_Function(). "
+                 << "currentPos=" << currentPos
+                 << ", bytesRead=" << bytesRead
+                 << ", tokenStartLimit=" << tokenStartLimit << endl;
+            return -1;
+        }
+
+        currentPos = oldPos + static_cast<streamoff>(consumedBytes);
+
+        if (currentPos <= oldPos)
+        {
+            cerr << "Error[PIC]: Pointer did not advance. "
+                 << "oldPos=" << oldPos
+                 << ", currentPos=" << currentPos
+                 << ", consumedBytes=" << consumedBytes << endl;
+            return -1;
+        }
     }
 
     inFile.close();
     outFile.close();
     return 0;
 }
+
+
+
+// Version 3 (Stable)
+// uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, streampos end, const string &outputFileNameText)
+// {
+//     ifstream inFile(inputFileNameBin, ios::binary);
+//     ofstream outFile(outputFileNameText, ios::app);
+//     if (!inFile || !outFile)
+//     {
+//         cerr << "Error opening files for decompression." << endl;
+//         return -1;
+//     }
+
+//     inFile.seekg(start);
+//     const size_t bufferSize = 4096;
+//     char buffer[bufferSize];
+//     streamoff currentPos = static_cast<streamoff>(start);
+
+//     uint32_t tmpSerial = 0, finalSerial = 0;
+//     string word;
+//     uint8_t nextByte;
+//     bool NEXT_CAP = false;
+//     uint32_t count = 0;
+
+//     while (currentPos < end && inFile)
+//     {
+//         inFile.clear(); // Clear any EOF/failure flags before seeking
+//         inFile.seekg(currentPos); // roll back to current position in case of a failure of buffer read
+
+//         size_t bytesToRead = static_cast<size_t>(min<streamoff>(bufferSize, end - currentPos));
+//         inFile.read(buffer, bytesToRead);
+//         size_t bytesRead = inFile.gcount();
+
+//         if (bytesRead == bufferSize)
+//         {
+//             size_t safeEnd = bufferSize;
+//             uint8_t stopSteps = 0;
+//             for (int i = bufferSize - 1; i >= 0; --i)
+//             {
+//                 uint8_t byte = static_cast<uint8_t>(buffer[i]);
+//                 uint8_t code = byte >> 1;
+//                 if (
+//                     byte == SPACE_BYTE 
+//                     // ||
+//                     // byte == NEWLINE_BYTE
+//                 )
+//                 {
+//                     stopSteps++;
+//                     if(stopSteps == BACKWARD_STOP_STEPS){
+//                         safeEnd = i - 1; 
+//                         stopSteps = 0;
+//                         break;
+//                     }
+//                 }
+                
+//             }
+//             size_t unreadBytes = bytesRead - safeEnd;
+//             if (unreadBytes > 0)
+//             {
+//                 inFile.clear();
+//                 inFile.seekg(-static_cast<streamoff>(unreadBytes), ios::cur);
+//                 bytesRead = safeEnd;
+//             }
+//         }
+        
+
+//         for (size_t i = 0; i < bytesRead && currentPos < end;)
+//         {
+//             uint8_t byte = static_cast<uint8_t>(buffer[i]);
+//             nextByte = byte & 1;
+//             byte >>= 1;
+
+//             if (nextByte == 0)
+//             {
+//                 finalSerial = static_cast<uint32_t>(concatenateBytes(finalSerial, byte, count));
+
+//                 if (count == 1)
+//                     finalSerial += TWO_BYTE_OFFSET;
+//                 else if (count == 2)
+//                     finalSerial += THREE_BYTE_OFFSET;
+//                 else if (count == 3)
+//                     finalSerial += FOUR_BYTE_OFFSET;
+
+//                 if (finalSerial == SPACE_CODE)
+//                 {
+//                     outFile << " ";
+//                 }
+//                 else if (finalSerial == NEW_LINE_CODE)
+//                 {
+//                     outFile << "\n";
+//                     ++decodedLineCounter;
+//                 }
+//                 else if (finalSerial == NEXT_CAPITAL_CODE)
+//                 {
+//                     NEXT_CAP = true;
+//                 }
+//                 else if (finalSerial == NEXT_SPECIAL_CODE)
+//                 {
+//                     size_t start_i = i;
+//                     string word = SPECIAL_CODE_WORD_READER(buffer, i, bytesRead);
+
+//                     if (word.empty()) {
+//                         // i = start_i;
+//                         i = start_i - 1;
+//                         currentPos--;
+//                         break;
+//                     }
+
+//                     outFile << word;
+//                     i++; // to skip the END_SPECIAL_CODE byteCode 
+//                     tmpSerial = finalSerial = 0;
+//                     count = 0;
+//                     currentPos += (i - start_i);  // update currentPos manually
+//                     continue; // updated currentPos in the previous statement, and already advanced i inside reader
+//                 }
+//                 else
+//                 {
+//                     word = dictMapCodeArray[finalSerial];
+//                     if (NEXT_CAP)
+//                     {
+//                         word[0] = toupper(word[0]);
+//                         NEXT_CAP = false;
+//                     }
+//                     outFile << word;
+//                 }
+
+//                 tmpSerial = finalSerial = 0;
+//                 count = 0;
+//                 ++i; // advance only here
+//             }
+//             else
+//             {
+//                 finalSerial = concatenateBytes(finalSerial, byte, count);
+//                 count++;
+//                 ++i;
+//             }
+
+//             ++currentPos;
+//         }
+
+//     }
+
+//     inFile.close();
+//     outFile.close();
+//     return 0;
+// }
 
 
 // ----------------------------------
@@ -1241,6 +2251,74 @@ and the string message may be buffered and
 displayed after the program execution completes.
 */
 
+// Version 4
+string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
+{
+    string decoded;
+    const size_t start_i = i;
+
+    if (i + 2 >= bytesRead) {
+        i = start_i;
+        return "";
+    }
+
+    ++i;
+    uint8_t countLowByte = static_cast<uint8_t>(buffer[i]);
+
+    ++i;
+    uint8_t countHighByte = static_cast<uint8_t>(buffer[i]);
+
+    if ((countLowByte & 0x01) != 0x01 || (countLowByte & 0x80) != 0x00 ||
+        (countHighByte & 0x01) != 0x01 || (countHighByte & 0x80) != 0x00) {
+        i = start_i;
+        return "";
+    }
+
+    uint16_t low6  = static_cast<uint16_t>((countLowByte >> 1) & 0x3F);
+    uint16_t high6 = static_cast<uint16_t>((countHighByte >> 1) & 0x3F);
+
+    uint16_t charCount = static_cast<uint16_t>((high6 << 6) | low6);
+
+    if (charCount == 0) {
+        i = start_i;
+        return "";
+    }
+
+    size_t payloadBytes = static_cast<size_t>(charCount) * 2;
+
+    if (i + payloadBytes >= bytesRead) {
+        i = start_i;
+        return "";
+    }
+
+    decoded.reserve(charCount);
+
+    for (uint16_t j = 0; j < charCount; ++j) {
+        uint8_t b1 = static_cast<uint8_t>(buffer[++i]);
+        uint8_t b2 = static_cast<uint8_t>(buffer[++i]);
+
+        uint8_t high2 = (b1 >> 1) & 0x03;
+        uint8_t low6Char = (b2 >> 1) & 0x3F;
+
+        char ch = static_cast<char>((high2 << 6) | low6Char);
+        decoded += ch;
+    }
+
+    if (i + 1 >= bytesRead) {
+        i = start_i;
+        return "";
+    }
+
+    uint8_t endCode = static_cast<uint8_t>(buffer[i + 1]) >> 1;
+    if (endCode != END_SPECIAL_CODE) {
+        i = start_i;
+        return "";
+    }
+
+    ++i; // now i points to END_SPECIAL_CODE
+    return decoded;
+}
+
 
 // Version 3
 // PIC version — read from an in-memory buffer
@@ -1250,55 +2328,98 @@ displayed after the program execution completes.
 //  - bytesRead: valid extent of buffer
 // Returns decoded ASCII string or "" if incomplete/invalid in this buffer.
 // On failure, i is rolled back to its position before reading size.
-string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
-{
-    string decoded;
-    const size_t start_i = i;
+// string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
+// {
+//     string decoded;
+//     const size_t start_i = i;
 
-    // Need at least the size byte
-    if (i + 1 >= bytesRead) {
-        cerr << "Error[PIC]: Not enough bytes to read sizeByte!\n";
-        exit(1);
-    }
+//     // Need at least the size byte
+//     if (i + 1 >= bytesRead) {
+//         i = start_i;
+//         return "";
+//     }
 
-    // Size (number of encoded bytes to follow)
-    uint8_t numBytes = ((static_cast<uint8_t>(buffer[++i])) >> 1) & 0x3F;
-    cout << "SPECIAL_CODE_WORD_READER: numBytes = " << unsigned(numBytes) << endl; // debug 
+//     // Read encoded size byte
+//     uint8_t rawSizeByte = static_cast<uint8_t>(buffer[++i]);
+//     uint8_t numBytes = (rawSizeByte >> 1) & 0x3F;
+
+//     // Must be nonzero and even: each decoded char uses 2 encoded bytes
+//     if (numBytes == 0 || (numBytes & 1) != 0) {
+//         i = start_i;
+//         return "";
+//     }
+
+//     // Check full payload fits in current buffer
+//     if (i + numBytes >= bytesRead) {
+//         i = start_i;
+//         return "";
+//     }
+
+//     // Decode payload: each ASCII char is stored in two bytes
+//     for (size_t j = 0; j < numBytes; j += 2) {
+//         uint8_t b1 = static_cast<uint8_t>(buffer[++i]);
+//         uint8_t b2 = static_cast<uint8_t>(buffer[++i]);
+
+//         uint8_t high2 = (b1 >> 1) & 0x03;
+//         uint8_t low6  = (b2 >> 1) & 0x3F;
+
+//         char ch = static_cast<char>((high2 << 6) | low6);
+//         decoded += ch;
+//     }
+
+//     return decoded;
+// }
 
 
-    // Sanity: must fit in current buffer
-    if (i + numBytes >= bytesRead) {
-        cerr << "Error[PIC]: Not enough bytes to read special code word! Needed: "
-                  << static_cast<int>(numBytes)
-                  << ", Available: " << (bytesRead - i - 1) << "\n";
-        i = start_i;  // rollback to before size
-        exit(1);
-    }
+// string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
+// {
+//     string decoded;
+//     const size_t start_i = i;
 
-    // // Must be pairs (2 bytes per decoded char)
-    // if ((numBytes & 1) != 0) {
-    //     cerr << "Error[PIC]: Encoded special length is odd (" << static_cast<int>(numBytes)
-    //               << "); expected even (2 bytes/char).\n";
-    //     i = start_i;  // rollback so caller can treat this as incomplete/invalid
-    //     exit(1);
-    // }
+//     // Need at least the size byte
+//     if (i + 1 >= bytesRead) {
+//         cerr << "Error[PIC]: Not enough bytes to read sizeByte!\n";
+//         exit(1);
+//     }
 
-    // Decode pairs
-    for (size_t j = 0; j < numBytes; j += 2) {
-        uint8_t b1 = static_cast<uint8_t>(buffer[++i]);
-        uint8_t b2 = static_cast<uint8_t>(buffer[++i]);
+//     // Size (number of encoded bytes to follow)
+//     uint8_t numBytes = ((static_cast<uint8_t>(buffer[++i])) >> 1) & 0x3F;
+//     cout << "SPECIAL_CODE_WORD_READER: numBytes = " << unsigned(numBytes) << endl; // debug 
 
-        // Extract middle 6 bits from each, then combine: [b1_5:0][b2_5:0]
-        uint8_t high6 = (b1 & 0b01111110) >> 1;
-        uint8_t low6  = (b2 & 0b01111110) >> 1;
 
-        char ch = static_cast<char>((high6 << 6) | low6);
-        decoded += ch;
-    }
+//     // Sanity: must fit in current buffer
+//     if (i + numBytes >= bytesRead) {
+//         cerr << "Error[PIC]: Not enough bytes to read special code word! Needed: "
+//                   << static_cast<int>(numBytes)
+//                   << ", Available: " << (bytesRead - i - 1) << "\n";
+//         i = start_i;  // rollback to before size
+//         exit(1);
+//     }
 
-    // Success: i now points at the last payload byte
-    return decoded;
-}
+//     // // Must be pairs (2 bytes per decoded char)
+//     // if ((numBytes & 1) != 0) {
+//     //     cerr << "Error[PIC]: Encoded special length is odd (" << static_cast<int>(numBytes)
+//     //               << "); expected even (2 bytes/char).\n";
+//     //     i = start_i;  // rollback so caller can treat this as incomplete/invalid
+//     //     exit(1);
+//     // }
+
+//     // Decode pairs
+//     for (size_t j = 0; j < numBytes; j += 2) {
+//         uint8_t b1 = static_cast<uint8_t>(buffer[++i]);
+//         uint8_t b2 = static_cast<uint8_t>(buffer[++i]);
+
+//         // Extract middle 6 bits from each, then combine: [b1_5:0][b2_5:0]
+//         uint8_t high6 = (b1 & 0b01111110) >> 1;
+//         uint8_t low6  = (b2 & 0b01111110) >> 1;
+
+//         char ch = static_cast<char>((high6 << 6) | low6);
+//         decoded += ch;
+//     }
+
+//     // Success: i now points at the last payload byte
+//     return decoded;
+// }
 
 
 
@@ -1353,33 +2474,77 @@ string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
 'SPECIAL_CODE_GENERATOR' function:
 Generate
 */
-// vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input) {
-vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input)
+
+// Version 2
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string& input)
 {
     vector<uint8_t> result;
-    uint8_t numBytes = static_cast<uint8_t>(input.length() * 2); // input.length() * 2 => each ASCII character is represented using two bytes
-    
-    // Encode the first byte: MSB = 1, LSB = 1, middle 6 bits = numBytes
-    uint8_t firstByte = (0b10000001) | (numBytes << 1);
-    result.push_back(firstByte);
-    
-    // Process each ASCII character into two bytes (high byte and low byte)
+
+    uint16_t charCount = static_cast<uint16_t>(input.length());
+
+    if (charCount > 0x0FFF) {
+        cerr << "Error[PIC]: Special code word too long. "
+             << "Length=" << charCount
+             << ", Max=4095" << endl;
+        exit(1);
+    }
+
+    uint8_t low6  = static_cast<uint8_t>(charCount & 0x3F);
+    uint8_t high6 = static_cast<uint8_t>((charCount >> 6) & 0x3F);
+
+    uint8_t countLowByte  = static_cast<uint8_t>((low6 << 1) | 0x01);   // 0|xxxxxx|1
+    uint8_t countHighByte = static_cast<uint8_t>((high6 << 1) | 0x01);  // 0|xxxxxx|1
+
+    result.push_back(countLowByte);
+    result.push_back(countHighByte);
+
     for (size_t i = 0; i < input.length(); ++i) {
         uint8_t asciiVal = static_cast<uint8_t>(input[i]);
-        uint8_t highByte = ((asciiVal >> 6) & 0x03) << 1 | 1; // Extract top 2 bits, LSB = 1
-        uint8_t lowByte = ((asciiVal & 0x3F) << 1);           // Extract bottom 6 bits
-        
-        // Set LSB of lowByte to 1 if not the last character, else set to 0
+
+        uint8_t highByte = static_cast<uint8_t>(((asciiVal >> 6) & 0x03) << 1 | 0x01);
+        uint8_t lowByte  = static_cast<uint8_t>((asciiVal & 0x3F) << 1);
+
         if (i < input.length() - 1) {
-            lowByte |= 1;
+            lowByte |= 0x01;
         }
-        
+
         result.push_back(highByte);
         result.push_back(lowByte);
     }
-    
+
     return result;
 }
+
+
+
+// Version 1
+// vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input) {
+// vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input)
+// {
+//     vector<uint8_t> result;
+//     uint8_t numBytes = static_cast<uint8_t>(input.length() * 2); // input.length() * 2 => each ASCII character is represented using two bytes
+    
+//     // Encode the first byte: MSB = 1, LSB = 1, middle 6 bits = numBytes
+//     uint8_t firstByte = (0b10000001) | (numBytes << 1);
+//     result.push_back(firstByte);
+    
+//     // Process each ASCII character into two bytes (high byte and low byte)
+//     for (size_t i = 0; i < input.length(); ++i) {
+//         uint8_t asciiVal = static_cast<uint8_t>(input[i]);
+//         uint8_t highByte = ((asciiVal >> 6) & 0x03) << 1 | 1; // Extract top 2 bits, LSB = 1
+//         uint8_t lowByte = ((asciiVal & 0x3F) << 1);           // Extract bottom 6 bits
+        
+//         // Set LSB of lowByte to 1 if not the last character, else set to 0
+//         if (i < input.length() - 1) {
+//             lowByte |= 1;
+//         }
+        
+//         result.push_back(highByte);
+//         result.push_back(lowByte);
+//     }
+    
+//     return result;
+// }
 
 /*
 'ONE_BYTE_CODE_GENERATOR' function:
@@ -1507,7 +2672,7 @@ uint32_t Shift_Right_Seven_Positions(uint32_t number)
 // This function is used in the decompression process.
 uint8_t Next_Byte_Available(uint8_t number)
 {
-    // return number % 2; // return one or zero.
+    // return number & 1; // return one or zero.
     return number & (0x1); // return one or zero: mask it with the LSb
 }
 

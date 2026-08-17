@@ -1,0 +1,12 @@
+Number of lines in the dictionary file: 333350
+Building the dictionary hash table for decompression..
+
+Total words = 333354
+The hash map for decompresssion has been generated successfully!
+
+The dictionary hash table for decompression has been built successfully.
+Text files merged into debug_pic_tic_outputs/debug_pic_tic_qrz8ndi6/pic_decompressed.txt
+Decoding completed and merged into debug_pic_tic_outputs/debug_pic_tic_qrz8ndi6/pic_decompressed.txt
+The decompression function is successful.
+Decoded lines: 5
+Total execution time: 155 milliseconds

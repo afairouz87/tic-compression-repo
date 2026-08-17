@@ -31,7 +31,7 @@ the reserved codeWords (space, newline, nextCapital).
 */ 
 #define CODE_WORD_OFFSET 5    // number of reserved code-words
 
-// These reserved code-words nedds to be shifted to the left by 1, and insert a zero.
+// These reserved code-words need to be shifted to the left by 1, and insert a zero.
 #define SPACE_CODE 0x0        // represent a space
 #define NEW_LINE_CODE 0x1     // represent a newline 
 #define NEXT_CAPITAL_CODE 0x2 // represent an uppercase letter of the first character of the next word
@@ -63,9 +63,11 @@ vector<uint8_t> ONE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> TWO_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> THREE_BYTE_CODE_GENERATOR(uint32_t input);
 vector<uint8_t> FOUR_BYTE_CODE_GENERATOR(uint32_t input);
-vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
+// vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input);
+vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string& input);
 string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes);
 string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead); // new version
+// bool SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead, string& decoded);
 
 uint8_t Mask_Single_Byte(uint32_t number);
 uint32_t Shift_Left_with_One_Inserted(uint32_t number);
