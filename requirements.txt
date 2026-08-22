@@ -1,0 +1,36 @@
+# Python dependencies for the TIC/PIC artifact.
+#
+#   python3 -m pip install -r requirements.txt
+#   python3 check_environment.py
+#
+# Minimum Python: 3.9
+#   The source itself only needs 3.7 (every PEP 585/604 annotation is guarded by
+#   `from __future__ import annotations`), but current pandas and matplotlib
+#   releases require 3.9+, so 3.9 is the supported floor. Verified on 3.11.7.
+#
+# Pinning policy: lower bounds only. These are the versions whose APIs the code
+# actually uses; upper bounds are deliberately omitted so the artifact keeps
+# installing on newer toolchains. Pin exactly only if you need bit-reproducible
+# plots.
+#
+# The canonical inventory (with classifications and per-experiment attribution)
+# lives in dependencies.py; this file mirrors its Python half.
+# System executables (lz4, lbzip2, ...) are NOT installable from here --
+# see docs/environment.md or run ./install_dependencies.sh.
+
+# --- Required: every benchmark runner ---
+pandas>=1.5            # tables, CSV I/O; imported unguarded by all runners
+psutil>=5.9            # memory measurement; a missing psutil is now a hard error
+
+# --- Required for the parallel experiments (figures) ---
+matplotlib>=3.5        # parallel_*.png; also used by plot_parallel_*.py
+
+# --- Required only for dataset acquisition (prepare_datasets.py fetch) ---
+# Not needed to build datasets from an existing corpus, nor to run benchmarks.
+requests>=2.28
+beautifulsoup4>=4.11
+lxml>=4.9
+ebooklib>=0.18
+
+# numpy is intentionally absent: it is not imported anywhere in this repository.
+# It arrives transitively with pandas/matplotlib.
