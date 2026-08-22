@@ -2975,7 +2975,6 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
     // First pass: calculate adjusted end boundaries to prevent overlap
     for (int i = 0; i < numThreads; i++)
     {
-        streamoff roughStart = i * chunkSize;
         streamoff roughEnd = (i == numThreads - 1) ? fileSize : (i + 1) * chunkSize;
 
         streampos adjustedEnd = static_cast<streampos>(roughEnd);

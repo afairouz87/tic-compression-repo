@@ -22,7 +22,8 @@
 
 using namespace std;
 using namespace chrono;
-namespace fs = std::filesystem;
+// (removed) namespace fs = std::filesystem; -- was unused and relied on a
+// transitive <filesystem> include that libstdc++ does not provide.
 
 // *** Reserved codeWords in T0: space, new line, next capital
 /*
