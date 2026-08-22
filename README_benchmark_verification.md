@@ -74,7 +74,7 @@ Expected:
 ### 3.2 Verify input files
 
 ```bash
-ls -lh ../textFiles/f1.txt ../textFiles/f2.txt ../textFiles/f3.txt ../textFiles/f4.txt ../textFiles/f5.txt ../textFiles/f6.txt ../textFiles/f7.txt ../textFiles/f8.txt ../textFiles/f9.txt ../textFiles/f10.txt
+ls -lh datasets/f1.txt datasets/f2.txt datasets/f3.txt datasets/f4.txt datasets/f5.txt datasets/f6.txt datasets/f7.txt datasets/f8.txt datasets/f9.txt datasets/f10.txt
 ```
 
 ### 3.3 Clean old generated results
@@ -108,8 +108,8 @@ print(get_tool_extension("PIC"))
 print(get_tool_extension("gzip"))
 print(get_tool_extension("bzip2"))
 print(get_tool_extension("lz4"))
-print(get_compressed_path("../textFiles/f1.txt", "TIC"))
-print(get_compressed_path("../textFiles/f1.txt", "gzip"))
+print(get_compressed_path("datasets/f1.txt", "TIC"))
+print(get_compressed_path("datasets/f1.txt", "gzip"))
 PY
 ```
 
@@ -241,7 +241,7 @@ ls -lh cr_results.csv cr_table.tex compression_time_results.csv compression_time
 ### 5.3 Check compressed files exist
 
 ```bash
-ls -lh ../textFiles/f1.txt.tic ../textFiles/f1.txt.pic ../textFiles/f1.txt.gz ../textFiles/f1.txt.bz2 ../textFiles/f1.txt.lz4
+ls -lh datasets/f1.txt.tic datasets/f1.txt.pic datasets/f1.txt.gz datasets/f1.txt.bz2 datasets/f1.txt.lz4
 ```
 
 ### 5.4 Inspect CSV headers
@@ -269,9 +269,9 @@ PY
 ```bash
 python3 - <<'PY'
 from pathlib import Path
-orig = Path("../textFiles/f1.txt").stat().st_size
+orig = Path("datasets/f1.txt").stat().st_size
 for ext, name in [(".tic","TIC"),(".pic","PIC"),(".gz","gzip"),(".bz2","bzip2"),(".lz4","lz4")]:
-    comp = Path("../textFiles/f1.txt" + ext).stat().st_size
+    comp = Path("datasets/f1.txt" + ext).stat().st_size
     print(name, round(orig/comp, 2))
 PY
 ```
@@ -321,9 +321,9 @@ sed -n '1,200p' decompression_time_table.tex
 Delete one compressed file and rerun:
 
 ```bash
-rm -f ../textFiles/f1.txt.tic
+rm -f datasets/f1.txt.tic
 python3 run_decompression.py
-ls -lh ../textFiles/f1.txt.tic
+ls -lh datasets/f1.txt.tic
 ```
 
 Expected:
@@ -427,21 +427,21 @@ sed -n '1,200p' entropy_table.tex
 ```bash
 python3 - <<'PY'
 from benchmark_utils import compute_file_entropy
-print("Plain:", compute_file_entropy("../textFiles/f1.txt"))
-print("TIC:", compute_file_entropy("../textFiles/f1.txt.tic"))
-print("PIC:", compute_file_entropy("../textFiles/f1.txt.pic"))
-print("gzip:", compute_file_entropy("../textFiles/f1.txt.gz"))
-print("bzip2:", compute_file_entropy("../textFiles/f1.txt.bz2"))
-print("lz4:", compute_file_entropy("../textFiles/f1.txt.lz4"))
+print("Plain:", compute_file_entropy("datasets/f1.txt"))
+print("TIC:", compute_file_entropy("datasets/f1.txt.tic"))
+print("PIC:", compute_file_entropy("datasets/f1.txt.pic"))
+print("gzip:", compute_file_entropy("datasets/f1.txt.gz"))
+print("bzip2:", compute_file_entropy("datasets/f1.txt.bz2"))
+print("lz4:", compute_file_entropy("datasets/f1.txt.lz4"))
 PY
 ```
 
 ### 7.10 Check auto-regeneration of missing compressed artifacts
 
 ```bash
-rm -f ../textFiles/f2.txt.pic
+rm -f datasets/f2.txt.pic
 python3 run_search.py
-ls -lh ../textFiles/f2.txt.pic
+ls -lh datasets/f2.txt.pic
 ```
 
 ---
@@ -640,17 +640,17 @@ Expected:
 ### 11.2 Missing compressed artifact auto-regeneration
 
 ```bash
-rm -f ../textFiles/f3.txt.gz
+rm -f datasets/f3.txt.gz
 python3 run_search.py
-ls -lh ../textFiles/f3.txt.gz
+ls -lh datasets/f3.txt.gz
 ```
 
 ### 11.3 Missing input file
 
 ```bash
-mv ../textFiles/f10.txt ../textFiles/f10.txt.bak
+mv datasets/f10.txt datasets/f10.txt.bak
 python3 run_parallel_benchmarks.py
-mv ../textFiles/f10.txt.bak ../textFiles/f10.txt
+mv datasets/f10.txt.bak datasets/f10.txt
 ```
 
 Expected:
