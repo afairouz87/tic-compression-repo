@@ -29,7 +29,10 @@ from typing import Any
 
 import pandas as pd
 
+from dependencies import preflight
+
 from benchmark_utils import (
+    BENCHMARK_INPUT_FILES,
     build_decompress_command,
     build_grouped_latex_table,
     ensure_compressed_files,
@@ -45,18 +48,10 @@ from benchmark_utils import (
 # User Config
 # =====================
 
-INPUT_FILES = [
-    "../textFiles/f1.txt",
-    "../textFiles/f2.txt",
-    "../textFiles/f3.txt",
-    "../textFiles/f4.txt",
-    "../textFiles/f5.txt",
-    "../textFiles/f6.txt",
-    "../textFiles/f7.txt",
-    "../textFiles/f8.txt",
-    "../textFiles/f9.txt",
-    "../textFiles/f10.txt",
-]
+# Benchmark inputs f1..f10, resolved through the canonical dataset directory.
+# The dataset layout is defined once in dataset_config.py; set $TIC_DATASET_DIR
+# to point at a different location. See docs/datasets.md.
+INPUT_FILES = list(BENCHMARK_INPUT_FILES)
 
 TOOLS = ["PIC", "TIC", "gzip", "bzip2", "lz4"]
 TABLE_TOOLS = ["TIC", "PIC", "gzip", "bzip2", "lz4"]
@@ -87,9 +82,17 @@ DECOMPRESSION_TIME_TABLE_LABEL = "tab:decompression_time"
 
 
 def _validate_inputs() -> None:
-    missing = [p for p in INPUT_FILES if not os.path.exists(p)]
-    if missing:
-        raise FileNotFoundError(f"Missing input files: {missing}")
+    """
+    Pre-flight check. Validates Python packages, external executables, the
+    compiled binaries, every input dataset and the output directories BEFORE
+    any measurement starts, so a long run never dies halfway through because a
+    tool was missing. Requirements live in dependencies.EXPERIMENT_REQUIREMENTS.
+    """
+    preflight(
+        "decompression",
+        input_files=INPUT_FILES,
+        output_dirs=[RESULTS_DIR, LOG_DIR],
+    )
 
 
 def _log_paths(file_name: str, tool: str) -> tuple[str, str]:

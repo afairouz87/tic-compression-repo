@@ -3,15 +3,22 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import shutil
+import sys
 import time
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from dataset_config import PARALLEL_DATASET_INFO, sha256_of
+from dependencies import preflight
+
 from benchmark_utils import (
+    DEFAULT_PARALLEL_THREADS,
+    PARALLEL_INPUT_FILE,
     LBZIP2_BINARY,
     build_compress_command,
     build_decompress_command,
@@ -27,9 +34,20 @@ from benchmark_utils import (
 # User Config
 # =====================
 
-INPUT_FILE = "../textFiles/file-parallel.txt"
+# Parallel-experiment input. This is the DEFAULT only; `--input PATH` overrides
+# it at run time. Resolved through the canonical dataset directory, which is
+# defined once in dataset_config.py.
+#
+# The historical file behind the published parallel results has unknown
+# provenance and is not reconstructible. If it is unavailable, supply a
+# replacement explicitly with --input. The runner never substitutes a dataset on
+# its own. See docs/datasets.md section 7.
+INPUT_FILE = PARALLEL_INPUT_FILE
 
-THREAD_COUNTS = [1]
+# Thread counts for the parallel experiments: 1, 2, 4, 6, and 8 threads.
+# Defined once in benchmark_utils.DEFAULT_PARALLEL_THREADS so that the
+# thread-count configuration has a single authoritative source.
+THREAD_COUNTS = list(DEFAULT_PARALLEL_THREADS)
 
 NUM_RUNS = 10
 WARMUP_RUNS = 1
@@ -109,26 +127,64 @@ def _write_partial_outputs(
         flush=True,
     )
 
-def _validate_inputs() -> None:
+def _describe_input(with_sha256: bool = False) -> None:
+    """Report exactly what is being benchmarked, before any measurement runs."""
+    size = os.path.getsize(INPUT_FILE)
+    print(f"[INPUT] path       : {INPUT_FILE}", flush=True)
+    print(f"[INPUT] size       : {size} bytes ({size / (1024 ** 2):.3f} MB)", flush=True)
+
+    if with_sha256:
+        print("[INPUT] sha256     : (computing...)", flush=True)
+        print(f"[INPUT] sha256     : {sha256_of(INPUT_FILE)}", flush=True)
+
+    if os.path.basename(INPUT_FILE) == PARALLEL_DATASET_INFO["logical_name"]:
+        print(
+            "[INPUT] provenance : historical input; provenance unknown "
+            "(see docs/datasets.md section 7)",
+            flush=True,
+        )
+    else:
+        print(
+            "[INPUT] provenance : reviewer-supplied substitute; results are NOT "
+            "comparable to the published parallel tables",
+            flush=True,
+        )
+
+
+def _validate_input_file() -> None:
+    """Validate only the benchmark input. Never substitutes another dataset."""
 
     if not os.path.exists(INPUT_FILE):
         raise FileNotFoundError(
-            f"Input file not found: {INPUT_FILE}"
+            f"Input file not found: {INPUT_FILE}\n"
+            f"  The parallel experiments need one input file.\n"
+            f"  The historical input ({PARALLEL_DATASET_INFO['logical_name']}) has unknown\n"
+            f"  provenance and cannot be rebuilt from this repository.\n"
+            f"  Supply an input explicitly, for example:\n"
+            f"    python3 run_parallel_benchmarks.py --input datasets/f10.txt\n"
+            f"  No dataset is substituted automatically. See docs/datasets.md section 7."
         )
 
-    if shutil.which(LBZIP2_BINARY) is None:
-        raise FileNotFoundError(
-            f"{LBZIP2_BINARY} not found in PATH."
-        )
+    if not os.path.isfile(INPUT_FILE):
+        raise FileNotFoundError(f"Input path is not a regular file: {INPUT_FILE}")
 
-    Path(LOG_DIR).mkdir(
-        parents=True,
-        exist_ok=True
-    )
+    if os.path.getsize(INPUT_FILE) == 0:
+        raise ValueError(f"Input file is empty: {INPUT_FILE}")
 
-    Path(TMP_DIR).mkdir(
-        parents=True,
-        exist_ok=True
+
+def _validate_inputs() -> None:
+    """
+    Full pre-run validation: input file, Python packages, external executables,
+    compiled binaries and working directories -- all before any measurement.
+    lbzip2 is required by these experiments ONLY; see dependencies.py.
+    """
+
+    _validate_input_file()
+
+    preflight(
+        "parallel",
+        input_files=[INPUT_FILE],
+        output_dirs=[RESULTS_DIR, LOG_DIR, TMP_DIR],
     )
 
 
@@ -783,8 +839,63 @@ def main() -> None:
     print(f"Wrote: {PARALLEL_REPLACE_PNG}")
 
 
-if __name__ == "__main__":
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run the parallel TIC/lbzip2 benchmarks over a single input file."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "The historical input file-parallel.txt has unknown provenance and is\n"
+            "not reconstructible from this repository. Supply an input explicitly:\n"
+            "  python3 run_parallel_benchmarks.py --input datasets/f10.txt\n"
+            "A substitute produces results that are NOT comparable to the published\n"
+            "parallel tables. See docs/datasets.md section 7."
+        ),
+    )
+    parser.add_argument(
+        "--input",
+        default=INPUT_FILE,
+        metavar="PATH",
+        help=f"Input file for the parallel experiments (default: {INPUT_FILE}).",
+    )
+    parser.add_argument(
+        "--sha256",
+        action="store_true",
+        help="Report the SHA-256 of the input before benchmarking.",
+    )
+    parser.add_argument(
+        "--describe-only",
+        action="store_true",
+        help="Validate and describe the input, then exit without benchmarking.",
+    )
+    return parser.parse_args(argv)
+
+
+def cli(argv=None) -> int:
+    global INPUT_FILE
+
+    args = parse_args(argv)
+    INPUT_FILE = args.input
+
+    try:
+        _validate_input_file()
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[FAIL] {exc}", file=sys.stderr, flush=True)
+        return 1
+
+    _describe_input(with_sha256=args.sha256)
+
+    if args.describe_only:
+        print("[INFO] --describe-only: no benchmark was run.", flush=True)
+        return 0
+
     main()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli())
 
 
 
@@ -824,8 +935,7 @@ if __name__ == "__main__":
 
 # INPUT_FILE = "../textFiles/file-parallel.txt"
 
-# # THREAD_COUNTS = [1, 2, 4, 6, 8]
-# THREAD_COUNTS = [1]
+# THREAD_COUNTS = [1, 2, 4, 6, 8]
 
 # NUM_RUNS = 10
 # WARMUP_RUNS = 1

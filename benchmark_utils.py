@@ -29,6 +29,29 @@ from typing import Any, Callable, Optional
 
 import pandas as pd
 
+# Dataset layout is defined once in dataset_config.py (standard library only)
+# and re-exported here so runners may import it from either module.
+from dependencies import (  # noqa: F401
+    MissingDependencyError,
+    preflight,
+    require_binaries,
+    require_executables,
+    require_input_files,
+    require_python_packages,
+    require_writable_dir,
+)
+from dataset_config import (  # noqa: F401
+    BENCHMARK_DATASET_NAMES,
+    BENCHMARK_DATASET_TARGET_MB,
+    BENCHMARK_INPUT_FILES,
+    DATASET_DIR,
+    EXPECTED_DATASET_COUNT,
+    PARALLEL_INPUT_FILE,
+    benchmark_input_files,
+    dataset_path,
+    parallel_input_file,
+)
+
 try:
     import matplotlib.pyplot as plt
 except Exception:  # pragma: no cover
@@ -44,7 +67,10 @@ LBZIP2_BINARY = "lbzip2"
 
 DEFAULT_SAMPLE_INTERVAL = 0.05
 DEFAULT_TIMEOUT_S: Optional[int] = None
-DEFAULT_PARALLEL_THREADS = [1, 2, 4, 8, 16]
+# Authoritative thread-count configuration for the parallel experiments.
+# The parallel experiments use 1, 2, 4, 6, and 8 threads; the committed
+# parallel_*_results.csv files were produced with exactly these counts.
+DEFAULT_PARALLEL_THREADS = [1, 2, 4, 6, 8]
 
 TOOL_EXTENSIONS: dict[str, str] = {
     "TIC": ".tic",
@@ -78,12 +104,45 @@ def _require_supported_tool(tool: str, supported: set[str]) -> None:
         raise ValueError(f"Unsupported tool '{tool}'. Supported tools: {sorted(supported)}")
 
 
-def _try_import_psutil():
-    try:
-        import psutil  # type: ignore
-        return psutil
-    except Exception:
-        return None
+_PSUTIL = None
+_PSUTIL_RESOLVED = False
+
+
+def _require_psutil():
+    """
+    Return the psutil module, or fail loudly.
+
+    psutil is REQUIRED for every memory measurement. It used to be imported
+    inside a bare try/except that returned None on failure, after which
+    _process_tree_memory_mb() returned 0.0 and every memory column in the
+    generated CSVs filled with zeros while the run still reported success --
+    a missing dependency silently became publishable numbers.
+
+    A numeric zero must never stand for an unavailable measurement, so this
+    now raises instead. Runners call preflight() at start-up, so in practice
+    the failure happens before any measurement begins.
+    """
+    global _PSUTIL, _PSUTIL_RESOLVED
+
+    if not _PSUTIL_RESOLVED:
+        try:
+            import psutil  # type: ignore
+            _PSUTIL = psutil
+        except Exception:
+            _PSUTIL = None
+        _PSUTIL_RESOLVED = True
+
+    if _PSUTIL is None:
+        raise MissingDependencyError(
+            "psutil is required for memory measurements but is not installed.\n"
+            "  Refusing to continue: without it every memory column would be "
+            "filled with zeros,\n"
+            "  which would look like a successful measurement of 0 MB.\n"
+            "  Install with: python3 -m pip install psutil\n"
+            "  Or install everything: python3 -m pip install -r requirements.txt\n"
+            "  Then re-check with: python3 check_environment.py"
+        )
+    return _PSUTIL
 
 
 def _safe_unlink(path: str | Path) -> None:
@@ -98,13 +157,14 @@ def _process_tree_memory_mb(root_pid: int) -> tuple[float, float]:
     Return (rss_sum_mb, peak_rss_sum_mb_this_sample).
     In a single sample, both are identical; kept separate for readability upstream.
     """
-    psutil = _try_import_psutil()
-    if psutil is None:
-        return 0.0, 0.0
+    psutil = _require_psutil()
 
     try:
         root = psutil.Process(root_pid)
     except Exception:
+        # The process already exited before this sample. This is a genuine
+        # measurement of "no resident memory at this instant", not a missing
+        # dependency, so 0.0 is the correct value to record here.
         return 0.0, 0.0
 
     rss = 0
@@ -141,7 +201,7 @@ def get_compressed_path(input_path: str, tool: str) -> str:
     """
     Construct the canonical compressed-file path for an input file and tool.
     Example:
-        ../textFiles/f1.txt + TIC -> ../textFiles/f1.txt.tic
+        datasets/f1.txt + TIC -> datasets/f1.txt.tic
     """
     return input_path + get_tool_extension(tool)
 
@@ -1021,6 +1081,16 @@ def plot_parallel_search(csv_path: str, figure_path: str, title: str = "TIC and 
 # =====================
 
 __all__ = [
+    # dataset layout (re-exported from dataset_config)
+    "DATASET_DIR",
+    "BENCHMARK_DATASET_NAMES",
+    "BENCHMARK_DATASET_TARGET_MB",
+    "BENCHMARK_INPUT_FILES",
+    "PARALLEL_INPUT_FILE",
+    "EXPECTED_DATASET_COUNT",
+    "dataset_path",
+    "benchmark_input_files",
+    "parallel_input_file",
     # configuration
     "PIC_BINARY",
     "TIC_BINARY",
