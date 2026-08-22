@@ -17,7 +17,7 @@ It runs each tool separately and records:
 - search summary output
 
 Usage examples:
-    python3 debug_pic_tic.py --file ../textFiles/test4.txt --query "the"
+    python3 debug_pic_tic.py --file datasets/f1.txt --query "the"
     python3 debug_pic_tic.py --file small.txt --query "the" --keep-files
 """
 

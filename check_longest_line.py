@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
 
+import argparse
 from pathlib import Path
+
+from dataset_config import PARALLEL_INPUT_FILE
 
 # =====================================================
 # CONFIG
 # =====================================================
 
-FILE = "../textFiles/file-parallel.txt"
+# Default only; --input overrides it. Resolved through the canonical dataset
+# directory (dataset_config.py).
+#
+# TIC divides work between threads by line (epic-v3.1.cpp, "Divide lines among
+# threads"), so the longest line in the parallel input bounds how evenly work
+# can be split. That is what this utility measures.
+FILE = PARALLEL_INPUT_FILE
 
 # =====================================================
 # MAIN
@@ -14,11 +23,22 @@ FILE = "../textFiles/file-parallel.txt"
 
 def main():
 
-    p = Path(FILE)
+    parser = argparse.ArgumentParser(
+        description="Report the longest line of a parallel-benchmark input file.",
+    )
+    parser.add_argument(
+        "--input",
+        default=FILE,
+        metavar="PATH",
+        help=f"File to analyse (default: {FILE}).",
+    )
+    args = parser.parse_args()
+
+    p = Path(args.input)
 
     if not p.exists():
-        print(f"[ERROR] File not found: {FILE}")
-        return
+        print(f"[ERROR] File not found: {args.input}")
+        return 1
 
     max_len = 0
     max_line_no = 0
@@ -50,7 +70,7 @@ def main():
                 )
 
     print("\n===== FILE ANALYSIS =====")
-    print(f"File            : {FILE}")
+    print(f"File            : {args.input}")
     print(f"Total lines     : {total_lines}")
     print(f"Longest line no : {max_line_no}")
     print(f"Longest length  : {max_len}")

@@ -21,3 +21,14 @@ results_backup/
 # Python cache
 __pycache__/
 *.pyc
+# Benchmark datasets (multi-gigabyte, rebuilt by prepare_datasets.py).
+# The manifest and the per-dataset source lists are small and are kept.
+/datasets/*
+!/datasets/manifest.csv
+!/datasets/manifests/
+
+# Source corpora and dataset-pipeline working directories
+/standard_ebooks_output/
+/gutenberg_ebooks/
+/combined_text_files/
+/data/
