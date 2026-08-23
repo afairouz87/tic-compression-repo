@@ -11,6 +11,17 @@ was modified.
 
 **Status: the repository has no license and is therefore not yet suitable for public release.**
 
+> **Status update — 2026-08-23.** Four directories discussed below have since been **removed from
+> the release artifact**: `search_outputs/`, `debug_pic_tic_outputs/`, `old_versions/` and
+> `backup_versions/`. This document is a dated audit and its findings are retained verbatim as
+> historical evidence; paths it describes are no longer present in the working tree. Their exact
+> pre-removal state is preserved at the Git tag `pre-artifact-cleanup`
+> (`git checkout pre-artifact-cleanup -- <path>`). See `docs/cleanup_manifest.md`.
+
+> Recommendations in the inventory below that read "exclude from the public artifact" have been
+> **carried out** for those four directories, including `backup_versions/unigram_freq_bk.csv`.
+> `dict.txt` is unchanged and still present; its licensing question remains open.
+
 ---
 
 ## 1. Existing project license: none
@@ -220,10 +231,12 @@ documents rebuilding from source. The recommendation is to keep it that way. Rat
 4. A pinned manifest with per-book identifiers and checksums solves reproducibility (see
    `docs/datasets.md` §10) **without** raising any redistribution question.
 
-### One inconsistency to resolve
+### One inconsistency — resolved 2026-08-23
 
-`search_outputs/` currently commits **~865 KB of literary prose** — five ~173 KB files that are grep
+`search_outputs/` **committed** ~865 KB of literary prose — five ~173 KB files that were grep
 output over corpus text, plus `debug_pic_tic_outputs/` (trivial, 43 bytes of decompressed text).
+Both directories have since been **removed from the release artifact**, which resolves this
+inconsistency. The analysis below is retained as the record of why.
 
 The prose is identifiable as *The Blue Castle* by L. M. Montgomery (1926) from the character name
 "Valancy" — a work available from both PG and Standard Ebooks and understood to be US public domain.

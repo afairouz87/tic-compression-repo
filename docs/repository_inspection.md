@@ -10,6 +10,13 @@
 and a build would dirty the tree). C++ sources were checked with `g++ -fsyntax-only`, which writes
 nothing.
 
+> **Status update — 2026-08-23.** Four directories discussed below have since been **removed from
+> the release artifact**: `search_outputs/`, `debug_pic_tic_outputs/`, `old_versions/` and
+> `backup_versions/`. This document is a dated audit and its findings are retained verbatim as
+> historical evidence; paths it describes are no longer present in the working tree. Their exact
+> pre-removal state is preserved at the Git tag `pre-artifact-cleanup`
+> (`git checkout pre-artifact-cleanup -- <path>`). See `docs/cleanup_manifest.md`.
+
 ---
 
 ## 1. Current directory tree

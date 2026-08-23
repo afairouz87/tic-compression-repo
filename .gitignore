@@ -18,6 +18,12 @@ nohup.out
 # Backup folders
 results_backup/
 
+# Tool output directories removed from the release artifact.
+# debug_pic_tic.py and run_search_v1.py recreate these on demand
+# (os.makedirs(..., exist_ok=True)); they must not return to the artifact.
+search_outputs/
+debug_pic_tic_outputs/
+
 # Python cache
 __pycache__/
 *.pyc
