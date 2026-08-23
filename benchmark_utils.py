@@ -50,6 +50,7 @@ from dataset_config import (  # noqa: F401
     benchmark_input_files,
     dataset_path,
     parallel_input_file,
+    results_path,
 )
 
 try:
@@ -777,11 +778,19 @@ def lookup_result_value(df: pd.DataFrame, file_name: str, column_name: str) -> A
     return rows.iloc[0][column_name]
 
 
-def load_compression_metrics(csv_path: str = "compression_time_results.csv") -> pd.DataFrame:
+def load_compression_metrics(
+    csv_path: str = None,
+) -> pd.DataFrame:
+    if csv_path is None:
+        csv_path = results_path("raw", "compression_time_results.csv")
     return load_csv_results(csv_path)
 
 
-def load_decompression_metrics(csv_path: str = "decompression_time_results.csv") -> pd.DataFrame:
+def load_decompression_metrics(
+    csv_path: str = None,
+) -> pd.DataFrame:
+    if csv_path is None:
+        csv_path = results_path("raw", "decompression_time_results.csv")
     return load_csv_results(csv_path)
 
 

@@ -14,6 +14,11 @@ from typing import Any
 import pandas as pd
 
 from dataset_config import PARALLEL_DATASET_INFO, sha256_of
+from dataset_config import (
+    RESULTS_FIGURES_DIR,
+    RESULTS_RAW_DIR,
+    RESULTS_TABLES_DIR,
+)
 from dependencies import preflight
 
 from benchmark_utils import (
@@ -57,7 +62,11 @@ DELAY_BETWEEN_RUNS_S = 0.5
 SEARCH_QUERY = "the"
 REPLACE_STRING = "THE"
 
-RESULTS_DIR = "."
+# Generated output goes under results/, never the repository root.
+# The layout is defined once in dataset_config.py.
+RESULTS_DIR = RESULTS_RAW_DIR          # *_results.csv
+TABLES_DIR = RESULTS_TABLES_DIR        # *_table.tex
+FIGURES_DIR = RESULTS_FIGURES_DIR      # *.png
 LOG_DIR = "results/logs/parallel"
 TMP_DIR = "results/tmp/parallel"
 
@@ -81,25 +90,13 @@ PARALLEL_REPLACE_CSV = os.path.join(
     "parallel_replace_results.csv"
 )
 
-PARALLEL_TIME_PNG = os.path.join(
-    RESULTS_DIR,
-    "parallel_time.png"
-)
+PARALLEL_TIME_PNG = os.path.join(FIGURES_DIR, "parallel_time.png")
 
-PARALLEL_MEMORY_PNG = os.path.join(
-    RESULTS_DIR,
-    "parallel_memory.png"
-)
+PARALLEL_MEMORY_PNG = os.path.join(FIGURES_DIR, "parallel_memory.png")
 
-PARALLEL_SEARCH_PNG = os.path.join(
-    RESULTS_DIR,
-    "parallel_search.png"
-)
+PARALLEL_SEARCH_PNG = os.path.join(FIGURES_DIR, "parallel_search.png")
 
-PARALLEL_REPLACE_PNG = os.path.join(
-    RESULTS_DIR,
-    "parallel_replace.png"
-)
+PARALLEL_REPLACE_PNG = os.path.join(FIGURES_DIR, "parallel_replace.png")
 
 # =====================
 # Helpers
@@ -184,7 +181,7 @@ def _validate_inputs() -> None:
     preflight(
         "parallel",
         input_files=[INPUT_FILE],
-        output_dirs=[RESULTS_DIR, LOG_DIR, TMP_DIR],
+        output_dirs=[RESULTS_DIR, TABLES_DIR, FIGURES_DIR, LOG_DIR, TMP_DIR],
     )
 
 
@@ -953,10 +950,10 @@ if __name__ == "__main__":
 # PARALLEL_SEARCH_CSV = os.path.join(RESULTS_DIR, "parallel_search_results.csv")
 # PARALLEL_REPLACE_CSV = os.path.join(RESULTS_DIR, "parallel_replace_results.csv")
 
-# PARALLEL_TIME_PNG = os.path.join(RESULTS_DIR, "parallel_time.png")
-# PARALLEL_MEMORY_PNG = os.path.join(RESULTS_DIR, "parallel_memory.png")
-# PARALLEL_SEARCH_PNG = os.path.join(RESULTS_DIR, "parallel_search.png")
-# PARALLEL_REPLACE_PNG = os.path.join(RESULTS_DIR, "parallel_replace.png")
+# PARALLEL_TIME_PNG = os.path.join(FIGURES_DIR, "parallel_time.png")
+# PARALLEL_MEMORY_PNG = os.path.join(FIGURES_DIR, "parallel_memory.png")
+# PARALLEL_SEARCH_PNG = os.path.join(FIGURES_DIR, "parallel_search.png")
+# PARALLEL_REPLACE_PNG = os.path.join(FIGURES_DIR, "parallel_replace.png")
 
 
 # # =====================

@@ -48,6 +48,11 @@ from typing import Any
 
 import pandas as pd
 
+from dataset_config import (
+    RESULTS_FIGURES_DIR,
+    RESULTS_RAW_DIR,
+    RESULTS_TABLES_DIR,
+)
 from dependencies import preflight
 
 from benchmark_utils import (
@@ -101,23 +106,27 @@ FORCE_RERUN_SEARCH_TOOLS = {
     "bzgrep",
 }
 
-RESULTS_DIR = "."
+# Generated output goes under results/, never the repository root.
+# The layout is defined once in dataset_config.py.
+RESULTS_DIR = RESULTS_RAW_DIR          # *_results.csv
+TABLES_DIR = RESULTS_TABLES_DIR        # *_table.tex
+FIGURES_DIR = RESULTS_FIGURES_DIR      # *.png
 LOG_DIR = "results/logs/search"
 
 LOOKUP_TIME_NO_RECOMP_CSV = os.path.join(RESULTS_DIR, "lookup_time_no_recompression_results.csv")
-LOOKUP_TIME_NO_RECOMP_TEX = os.path.join(RESULTS_DIR, "lookup_time_no_recompression_table.tex")
+LOOKUP_TIME_NO_RECOMP_TEX = os.path.join(TABLES_DIR, "lookup_time_no_recompression_table.tex")
 
 LOOKUP_TIME_WITH_RECOMP_CSV = os.path.join(RESULTS_DIR, "lookup_time_with_recompression_results.csv")
-LOOKUP_TIME_WITH_RECOMP_TEX = os.path.join(RESULTS_DIR, "lookup_time_with_recompression_table.tex")
+LOOKUP_TIME_WITH_RECOMP_TEX = os.path.join(TABLES_DIR, "lookup_time_with_recompression_table.tex")
 
 LOOKUP_MEMORY_CSV = os.path.join(RESULTS_DIR, "lookup_memory_results.csv")
-LOOKUP_MEMORY_TEX = os.path.join(RESULTS_DIR, "lookup_memory_table.tex")
+LOOKUP_MEMORY_TEX = os.path.join(TABLES_DIR, "lookup_memory_table.tex")
 
 LOOKUP_TIME_STREAMING_CSV = os.path.join(RESULTS_DIR, "lookup_time_streaming_results.csv")
-LOOKUP_TIME_STREAMING_TEX = os.path.join(RESULTS_DIR, "lookup_time_streaming_table.tex")
+LOOKUP_TIME_STREAMING_TEX = os.path.join(TABLES_DIR, "lookup_time_streaming_table.tex")
 
 ENTROPY_CSV = os.path.join(RESULTS_DIR, "entropy_results.csv")
-ENTROPY_TEX = os.path.join(RESULTS_DIR, "entropy_table.tex")
+ENTROPY_TEX = os.path.join(TABLES_DIR, "entropy_table.tex")
 
 CAPTION_TABLE_2 = "Lookup Time (without Re-compression)."
 LABEL_TABLE_2 = "tab:lookup_no_recompression"
@@ -149,7 +158,7 @@ def _validate_inputs() -> None:
     preflight(
         "search",
         input_files=INPUT_FILES,
-        output_dirs=[RESULTS_DIR, LOG_DIR],
+        output_dirs=[RESULTS_DIR, TABLES_DIR, FIGURES_DIR, LOG_DIR],
     )
 
 
@@ -1007,19 +1016,19 @@ if __name__ == "__main__":
 # LOG_DIR = "results/logs/search"
 
 # LOOKUP_TIME_NO_RECOMP_CSV = os.path.join(RESULTS_DIR, "lookup_time_no_recompression_results.csv")
-# LOOKUP_TIME_NO_RECOMP_TEX = os.path.join(RESULTS_DIR, "lookup_time_no_recompression_table.tex")
+# LOOKUP_TIME_NO_RECOMP_TEX = os.path.join(TABLES_DIR, "lookup_time_no_recompression_table.tex")
 
 # LOOKUP_TIME_WITH_RECOMP_CSV = os.path.join(RESULTS_DIR, "lookup_time_with_recompression_results.csv")
-# LOOKUP_TIME_WITH_RECOMP_TEX = os.path.join(RESULTS_DIR, "lookup_time_with_recompression_table.tex")
+# LOOKUP_TIME_WITH_RECOMP_TEX = os.path.join(TABLES_DIR, "lookup_time_with_recompression_table.tex")
 
 # LOOKUP_MEMORY_CSV = os.path.join(RESULTS_DIR, "lookup_memory_results.csv")
-# LOOKUP_MEMORY_TEX = os.path.join(RESULTS_DIR, "lookup_memory_table.tex")
+# LOOKUP_MEMORY_TEX = os.path.join(TABLES_DIR, "lookup_memory_table.tex")
 
 # LOOKUP_TIME_STREAMING_CSV = os.path.join(RESULTS_DIR, "lookup_time_streaming_results.csv")
-# LOOKUP_TIME_STREAMING_TEX = os.path.join(RESULTS_DIR, "lookup_time_streaming_table.tex")
+# LOOKUP_TIME_STREAMING_TEX = os.path.join(TABLES_DIR, "lookup_time_streaming_table.tex")
 
 # ENTROPY_CSV = os.path.join(RESULTS_DIR, "entropy_results.csv")
-# ENTROPY_TEX = os.path.join(RESULTS_DIR, "entropy_table.tex")
+# ENTROPY_TEX = os.path.join(TABLES_DIR, "entropy_table.tex")
 
 # COMPRESSION_TIME_CSV = os.path.join(RESULTS_DIR, "compression_time_results.csv")
 # DECOMPRESSION_TIME_CSV = os.path.join(RESULTS_DIR, "decompression_time_results.csv")

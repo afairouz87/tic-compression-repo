@@ -32,6 +32,11 @@ from typing import Any
 
 import pandas as pd
 
+from dataset_config import (
+    RESULTS_FIGURES_DIR,
+    RESULTS_RAW_DIR,
+    RESULTS_TABLES_DIR,
+)
 from dependencies import preflight
 
 from benchmark_utils import (
@@ -80,14 +85,18 @@ WARMUP_RUNS = 1
 # FORCE_RECOMPRESS_TOOLS = {"TIC", "PIC", "gzip", "bzip2", "lz4"}
 FORCE_RECOMPRESS_TOOLS = set(TOOLS)
 
-RESULTS_DIR = "."
+# Generated output goes under results/, never the repository root.
+# The layout is defined once in dataset_config.py.
+RESULTS_DIR = RESULTS_RAW_DIR          # *_results.csv
+TABLES_DIR = RESULTS_TABLES_DIR        # *_table.tex
+FIGURES_DIR = RESULTS_FIGURES_DIR      # *.png
 LOG_DIR = "results/logs/compression"
 
 CR_RESULTS_CSV = os.path.join(RESULTS_DIR, "cr_results.csv")
-CR_TABLE_TEX = os.path.join(RESULTS_DIR, "cr_table.tex")
+CR_TABLE_TEX = os.path.join(TABLES_DIR, "cr_table.tex")
 
 COMPRESSION_TIME_RESULTS_CSV = os.path.join(RESULTS_DIR, "compression_time_results.csv")
-COMPRESSION_TIME_TABLE_TEX = os.path.join(RESULTS_DIR, "compression_time_table.tex")
+COMPRESSION_TIME_TABLE_TEX = os.path.join(TABLES_DIR, "compression_time_table.tex")
 
 CR_TABLE_CAPTION = "Compression Ratio (CR) for all schemes."
 CR_TABLE_LABEL = "tab:cr"
@@ -106,7 +115,7 @@ def _validate_inputs() -> None:
     preflight(
         "compression",
         input_files=INPUT_FILES,
-        output_dirs=[RESULTS_DIR, LOG_DIR],
+        output_dirs=[RESULTS_DIR, TABLES_DIR, FIGURES_DIR, LOG_DIR],
     )
 
 

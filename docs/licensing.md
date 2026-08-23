@@ -18,6 +18,14 @@ was modified.
 > pre-removal state is preserved at the Git tag `pre-artifact-cleanup`
 > (`git checkout pre-artifact-cleanup -- <path>`). See `docs/cleanup_manifest.md`.
 
+> **Status update — 2026-08-24.** The committed generated artifacts described below have since been
+> **removed from the release artifact**: the 14 `*_results.csv` files, the 10 `*_table.tex` tables,
+> the 4 `parallel_*.png` figures, and the compiled binaries `epic-v3.1` / `pic-v3.1`. Experiment
+> output now goes to `results/raw`, `results/tables` and `results/figures`, never the repository
+> root, and the whole `results/` tree is git-ignored. Binaries are built locally with `make`.
+> Findings below are retained verbatim as dated evidence; their exact pre-removal state is preserved
+> at the Git tag `pre-artifact-cleanup`. See `docs/cleanup_manifest.md`.
+
 > Recommendations in the inventory below that read "exclude from the public artifact" have been
 > **carried out** for those four directories, including `backup_versions/unigram_freq_bk.csv`.
 > `dict.txt` is unchanged and still present; its licensing question remains open.

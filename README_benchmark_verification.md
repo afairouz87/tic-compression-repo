@@ -80,9 +80,8 @@ ls -lh datasets/f1.txt datasets/f2.txt datasets/f3.txt datasets/f4.txt datasets/
 ### 3.3 Clean old generated results
 
 ```bash
-rm -f ./*.csv ./*.tex ./*.png
-rm -rf results/logs results/tmp
-mkdir -p results/logs results/tmp
+rm -rf results/raw results/tables results/figures results/logs results/tmp
+mkdir -p results/raw results/tables results/figures results/logs results/tmp
 ```
 
 ---
@@ -235,7 +234,7 @@ python3 run_compression.py
 ### 5.2 Check output files exist
 
 ```bash
-ls -lh cr_results.csv cr_table.tex compression_time_results.csv compression_time_table.tex
+ls -lh results/raw/cr_results.csv results/tables/cr_table.tex results/raw/compression_time_results.csv results/tables/compression_time_table.tex
 ```
 
 ### 5.3 Check compressed files exist
@@ -249,8 +248,8 @@ ls -lh datasets/f1.txt.tic datasets/f1.txt.pic datasets/f1.txt.gz datasets/f1.tx
 ```bash
 python3 - <<'PY'
 import pandas as pd
-print(pd.read_csv("cr_results.csv").columns.tolist())
-print(pd.read_csv("compression_time_results.csv").columns.tolist())
+print(pd.read_csv("results/raw/cr_results.csv").columns.tolist())
+print(pd.read_csv("results/raw/compression_time_results.csv").columns.tolist())
 PY
 ```
 
@@ -259,8 +258,8 @@ PY
 ```bash
 python3 - <<'PY'
 import pandas as pd
-print(pd.read_csv("cr_results.csv").head())
-print(pd.read_csv("compression_time_results.csv").head())
+print(pd.read_csv("results/raw/cr_results.csv").head())
+print(pd.read_csv("results/raw/compression_time_results.csv").head())
 PY
 ```
 
@@ -279,8 +278,8 @@ PY
 ### 5.7 Inspect generated LaTeX
 
 ```bash
-sed -n '1,200p' cr_table.tex
-sed -n '1,200p' compression_time_table.tex
+sed -n '1,200p' results/tables/cr_table.tex
+sed -n '1,200p' results/tables/compression_time_table.tex
 ```
 
 ---
@@ -296,7 +295,7 @@ python3 run_decompression.py
 ### 6.2 Check output files exist
 
 ```bash
-ls -lh decompression_time_results.csv decompression_time_table.tex
+ls -lh results/raw/decompression_time_results.csv results/tables/decompression_time_table.tex
 ```
 
 ### 6.3 Inspect CSV header and first rows
@@ -304,7 +303,7 @@ ls -lh decompression_time_results.csv decompression_time_table.tex
 ```bash
 python3 - <<'PY'
 import pandas as pd
-df = pd.read_csv("decompression_time_results.csv")
+df = pd.read_csv("results/raw/decompression_time_results.csv")
 print(df.columns.tolist())
 print(df.head())
 PY
@@ -313,7 +312,7 @@ PY
 ### 6.4 Inspect generated LaTeX
 
 ```bash
-sed -n '1,200p' decompression_time_table.tex
+sed -n '1,200p' results/tables/decompression_time_table.tex
 ```
 
 ### 6.5 Check setup regeneration behavior
@@ -343,7 +342,7 @@ python3 run_search.py
 ### 7.2 Check output files exist
 
 ```bash
-ls -lh lookup_time_no_recompression_results.csv lookup_time_no_recompression_table.tex lookup_time_with_recompression_results.csv lookup_time_with_recompression_table.tex lookup_memory_results.csv lookup_memory_table.tex lookup_time_streaming_results.csv lookup_time_streaming_table.tex entropy_results.csv entropy_table.tex
+ls -lh results/raw/lookup_time_no_recompression_results.csv results/tables/lookup_time_no_recompression_table.tex results/raw/lookup_time_with_recompression_results.csv results/tables/lookup_time_with_recompression_table.tex results/raw/lookup_memory_results.csv results/tables/lookup_memory_table.tex results/raw/lookup_time_streaming_results.csv results/tables/lookup_time_streaming_table.tex results/raw/entropy_results.csv results/tables/entropy_table.tex
 ```
 
 ### 7.3 Inspect CSV headers
@@ -352,11 +351,11 @@ ls -lh lookup_time_no_recompression_results.csv lookup_time_no_recompression_tab
 python3 - <<'PY'
 import pandas as pd
 for f in [
-    "lookup_time_no_recompression_results.csv",
-    "lookup_time_with_recompression_results.csv",
-    "lookup_memory_results.csv",
-    "lookup_time_streaming_results.csv",
-    "entropy_results.csv",
+    "results/raw/lookup_time_no_recompression_results.csv",
+    "results/raw/lookup_time_with_recompression_results.csv",
+    "results/raw/lookup_memory_results.csv",
+    "results/raw/lookup_time_streaming_results.csv",
+    "results/raw/entropy_results.csv",
 ]:
     df = pd.read_csv(f)
     print(f, "->", df.columns.tolist())
@@ -369,11 +368,11 @@ PY
 python3 - <<'PY'
 import pandas as pd
 for f in [
-    "lookup_time_no_recompression_results.csv",
-    "lookup_time_with_recompression_results.csv",
-    "lookup_memory_results.csv",
-    "lookup_time_streaming_results.csv",
-    "entropy_results.csv",
+    "results/raw/lookup_time_no_recompression_results.csv",
+    "results/raw/lookup_time_with_recompression_results.csv",
+    "results/raw/lookup_memory_results.csv",
+    "results/raw/lookup_time_streaming_results.csv",
+    "results/raw/entropy_results.csv",
 ]:
     print("\n====", f, "====")
     print(pd.read_csv(f).head())
@@ -385,9 +384,9 @@ PY
 ```bash
 python3 - <<'PY'
 import pandas as pd
-comp = pd.read_csv("compression_time_results.csv")
-decomp = pd.read_csv("decompression_time_results.csv")
-lookup = pd.read_csv("lookup_time_no_recompression_results.csv")
+comp = pd.read_csv("results/raw/compression_time_results.csv")
+decomp = pd.read_csv("results/raw/decompression_time_results.csv")
+lookup = pd.read_csv("results/raw/lookup_time_no_recompression_results.csv")
 
 row = lookup[lookup["File Name"]=="f1.txt"].iloc[0]
 print("Table2 row:", row.to_dict())
@@ -415,11 +414,11 @@ done
 ### 7.8 Inspect generated LaTeX
 
 ```bash
-sed -n '1,200p' lookup_time_no_recompression_table.tex
-sed -n '1,200p' lookup_time_with_recompression_table.tex
-sed -n '1,200p' lookup_memory_table.tex
-sed -n '1,200p' lookup_time_streaming_table.tex
-sed -n '1,200p' entropy_table.tex
+sed -n '1,200p' results/tables/lookup_time_no_recompression_table.tex
+sed -n '1,200p' results/tables/lookup_time_with_recompression_table.tex
+sed -n '1,200p' results/tables/lookup_memory_table.tex
+sed -n '1,200p' results/tables/lookup_time_streaming_table.tex
+sed -n '1,200p' results/tables/entropy_table.tex
 ```
 
 ### 7.9 Manual entropy spot-check for `f1.txt`
@@ -457,7 +456,7 @@ python3 run_search_replace.py
 ### 8.2 Check output files exist
 
 ```bash
-ls -lh lookup_replace_vs_plaintext_results.csv lookup_replace_vs_plaintext_table.tex lookup_replace_compressed_results.csv lookup_replace_compressed_table.tex
+ls -lh results/raw/lookup_replace_vs_plaintext_results.csv results/tables/lookup_replace_vs_plaintext_table.tex results/raw/lookup_replace_compressed_results.csv results/tables/lookup_replace_compressed_table.tex
 ```
 
 ### 8.3 Inspect CSV headers and first rows
@@ -466,8 +465,8 @@ ls -lh lookup_replace_vs_plaintext_results.csv lookup_replace_vs_plaintext_table
 python3 - <<'PY'
 import pandas as pd
 for f in [
-    "lookup_replace_vs_plaintext_results.csv",
-    "lookup_replace_compressed_results.csv",
+    "results/raw/lookup_replace_vs_plaintext_results.csv",
+    "results/raw/lookup_replace_compressed_results.csv",
 ]:
     df = pd.read_csv(f)
     print(f, "->", df.columns.tolist())
@@ -484,8 +483,8 @@ find results/logs/search_replace -type f | sort | head -40
 ### 8.5 Inspect generated LaTeX
 
 ```bash
-sed -n '1,200p' lookup_replace_vs_plaintext_table.tex
-sed -n '1,200p' lookup_replace_compressed_table.tex
+sed -n '1,200p' results/tables/lookup_replace_vs_plaintext_table.tex
+sed -n '1,200p' results/tables/lookup_replace_compressed_table.tex
 ```
 
 ### 8.6 Manual spot-check on one row
@@ -493,8 +492,8 @@ sed -n '1,200p' lookup_replace_compressed_table.tex
 ```bash
 python3 - <<'PY'
 import pandas as pd
-print(pd.read_csv("lookup_replace_vs_plaintext_results.csv").query("`File Name`=='f1.txt'"))
-print(pd.read_csv("lookup_replace_compressed_results.csv").query("`File Name`=='f1.txt'"))
+print(pd.read_csv("results/raw/lookup_replace_vs_plaintext_results.csv").query("`File Name`=='f1.txt'"))
+print(pd.read_csv("results/raw/lookup_replace_compressed_results.csv").query("`File Name`=='f1.txt'"))
 PY
 ```
 
@@ -511,7 +510,7 @@ python3 run_parallel_benchmarks.py
 ### 9.2 Check output files exist
 
 ```bash
-ls -lh parallel_time_results.csv parallel_memory_results.csv parallel_search_results.csv parallel_time.png parallel_memory.png parallel_search.png
+ls -lh results/raw/parallel_time_results.csv results/raw/parallel_memory_results.csv results/raw/parallel_search_results.csv results/figures/parallel_time.png results/figures/parallel_memory.png results/figures/parallel_search.png
 ```
 
 ### 9.3 Inspect CSV headers and rows
@@ -520,9 +519,9 @@ ls -lh parallel_time_results.csv parallel_memory_results.csv parallel_search_res
 python3 - <<'PY'
 import pandas as pd
 for f in [
-    "parallel_time_results.csv",
-    "parallel_memory_results.csv",
-    "parallel_search_results.csv",
+    "results/raw/parallel_time_results.csv",
+    "results/raw/parallel_memory_results.csv",
+    "results/raw/parallel_search_results.csv",
 ]:
     df = pd.read_csv(f)
     print("\n====", f, "====")
@@ -534,9 +533,9 @@ PY
 ### 9.4 Open figures (macOS)
 
 ```bash
-open parallel_time.png
-open parallel_memory.png
-open parallel_search.png
+open results/figures/parallel_time.png
+open results/figures/parallel_memory.png
+open results/figures/parallel_search.png
 ```
 
 ### 9.5 Inspect parallel logs
@@ -552,7 +551,7 @@ find results/logs/parallel -type f | sort | head -80
 ### 10.1 Verify all expected files were produced
 
 ```bash
-ls -1 *.csv *.tex *.png
+ls -1 results/raw/*.csv results/tables/*.tex results/figures/*.png
 ```
 
 ### 10.2 Verify TIC baseline column exists where expected
@@ -561,14 +560,14 @@ ls -1 *.csv *.tex *.png
 python3 - <<'PY'
 import pandas as pd
 files = [
-    "compression_time_results.csv",
-    "decompression_time_results.csv",
-    "lookup_time_no_recompression_results.csv",
-    "lookup_time_with_recompression_results.csv",
-    "lookup_memory_results.csv",
-    "lookup_time_streaming_results.csv",
-    "lookup_replace_vs_plaintext_results.csv",
-    "lookup_replace_compressed_results.csv",
+    "results/raw/compression_time_results.csv",
+    "results/raw/decompression_time_results.csv",
+    "results/raw/lookup_time_no_recompression_results.csv",
+    "results/raw/lookup_time_with_recompression_results.csv",
+    "results/raw/lookup_memory_results.csv",
+    "results/raw/lookup_time_streaming_results.csv",
+    "results/raw/lookup_replace_vs_plaintext_results.csv",
+    "results/raw/lookup_replace_compressed_results.csv",
 ]
 for f in files:
     df = pd.read_csv(f)
@@ -582,16 +581,16 @@ PY
 python3 - <<'PY'
 import pandas as pd
 files = [
-    "cr_results.csv",
-    "compression_time_results.csv",
-    "decompression_time_results.csv",
-    "lookup_time_no_recompression_results.csv",
-    "lookup_time_with_recompression_results.csv",
-    "lookup_memory_results.csv",
-    "lookup_time_streaming_results.csv",
-    "lookup_replace_vs_plaintext_results.csv",
-    "lookup_replace_compressed_results.csv",
-    "entropy_results.csv",
+    "results/raw/cr_results.csv",
+    "results/raw/compression_time_results.csv",
+    "results/raw/decompression_time_results.csv",
+    "results/raw/lookup_time_no_recompression_results.csv",
+    "results/raw/lookup_time_with_recompression_results.csv",
+    "results/raw/lookup_memory_results.csv",
+    "results/raw/lookup_time_streaming_results.csv",
+    "results/raw/lookup_replace_vs_plaintext_results.csv",
+    "results/raw/lookup_replace_compressed_results.csv",
+    "results/raw/entropy_results.csv",
 ]
 for f in files:
     df = pd.read_csv(f)
@@ -605,16 +604,16 @@ PY
 python3 - <<'PY'
 import pandas as pd
 files = [
-    "cr_results.csv",
-    "compression_time_results.csv",
-    "decompression_time_results.csv",
-    "lookup_time_no_recompression_results.csv",
-    "lookup_time_with_recompression_results.csv",
-    "lookup_memory_results.csv",
-    "lookup_time_streaming_results.csv",
-    "lookup_replace_vs_plaintext_results.csv",
-    "lookup_replace_compressed_results.csv",
-    "entropy_results.csv",
+    "results/raw/cr_results.csv",
+    "results/raw/compression_time_results.csv",
+    "results/raw/decompression_time_results.csv",
+    "results/raw/lookup_time_no_recompression_results.csv",
+    "results/raw/lookup_time_with_recompression_results.csv",
+    "results/raw/lookup_memory_results.csv",
+    "results/raw/lookup_time_streaming_results.csv",
+    "results/raw/lookup_replace_vs_plaintext_results.csv",
+    "results/raw/lookup_replace_compressed_results.csv",
+    "results/raw/entropy_results.csv",
 ]
 for f in files:
     df = pd.read_csv(f)
@@ -629,13 +628,13 @@ PY
 ### 11.1 Missing prerequisite CSV
 
 ```bash
-mv compression_time_results.csv compression_time_results.csv.bak
+mv results/raw/compression_time_results.csv results/raw/compression_time_results.csv.bak
 python3 run_search.py
-mv compression_time_results.csv.bak compression_time_results.csv
+mv results/raw/compression_time_results.csv.bak results/raw/compression_time_results.csv
 ```
 
 Expected:
-- `run_search.py` fails clearly and reports that `compression_time_results.csv` is missing
+- `run_search.py` fails clearly and reports that `results/raw/compression_time_results.csv` is missing
 
 ### 11.2 Missing compressed artifact auto-regeneration
 

@@ -24,6 +24,27 @@ results_backup/
 search_outputs/
 debug_pic_tic_outputs/
 
+# Generated experiment output. Runners write everything under results/:
+#   results/raw/      *_results.csv
+#   results/tables/   *_table.tex
+#   results/figures/  *.png
+#   results/logs/     run logs
+#   results/tmp/      scratch
+# Directory-based ignore, so nothing under results/ is ever committed.
+/results/
+
+# Belt and braces: catch generated artifacts written to the repository root by
+# an older script or a manual run. Scoped with a leading slash so only the root
+# is affected -- docs/, datasets/manifest.csv and the source tree are untouched.
+/*_results.csv
+/*_table.tex
+/parallel_*.png
+
+# Compiled binaries. Both are Make targets and must be built locally with
+# `make`; the committed macOS/arm64 copies were removed from the artifact.
+/epic-v3.1
+/pic-v3.1
+
 # Python cache
 __pycache__/
 *.pyc

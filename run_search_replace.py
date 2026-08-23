@@ -31,6 +31,11 @@ from typing import Any
 
 import pandas as pd
 
+from dataset_config import (
+    RESULTS_FIGURES_DIR,
+    RESULTS_RAW_DIR,
+    RESULTS_TABLES_DIR,
+)
 from dependencies import preflight
 
 from benchmark_utils import (
@@ -74,14 +79,18 @@ REPLACE_STRING = "THE"
 # SEARCH_STRING = "interviewing"
 # REPLACE_STRING = "questioning"
 
-RESULTS_DIR = "."
+# Generated output goes under results/, never the repository root.
+# The layout is defined once in dataset_config.py.
+RESULTS_DIR = RESULTS_RAW_DIR          # *_results.csv
+TABLES_DIR = RESULTS_TABLES_DIR        # *_table.tex
+FIGURES_DIR = RESULTS_FIGURES_DIR      # *.png
 LOG_DIR = "results/logs/search_replace"
 
 TABLE8_CSV = os.path.join(RESULTS_DIR, "lookup_replace_vs_plaintext_results.csv")
-TABLE8_TEX = os.path.join(RESULTS_DIR, "lookup_replace_vs_plaintext_table.tex")
+TABLE8_TEX = os.path.join(TABLES_DIR, "lookup_replace_vs_plaintext_table.tex")
 
 TABLE9_CSV = os.path.join(RESULTS_DIR, "lookup_replace_compressed_results.csv")
-TABLE9_TEX = os.path.join(RESULTS_DIR, "lookup_replace_compressed_table.tex")
+TABLE9_TEX = os.path.join(TABLES_DIR, "lookup_replace_compressed_table.tex")
 
 TABLE8_CAPTION = (
     "Lookup-and-Replace (L-R) Time on a compressed file in TIC and PIC, "
@@ -107,7 +116,7 @@ def _validate_inputs() -> None:
     preflight(
         "search_replace",
         input_files=INPUT_FILES,
-        output_dirs=[RESULTS_DIR, LOG_DIR],
+        output_dirs=[RESULTS_DIR, TABLES_DIR, FIGURES_DIR, LOG_DIR],
     )
 
 

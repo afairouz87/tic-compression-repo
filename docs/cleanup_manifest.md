@@ -9,9 +9,15 @@ Classification of every tracked file for the public TIC artifact release.
 > (16), `old_versions/` (10) and `backup_versions/` (5) — **59 files, ~6.1 MB**. Rows for these
 > are marked **[REMOVED 2026-08-23]** below.
 >
-> Everything else in this document remains a **proposal**. Explicitly still present and deferred to
-> a later step: `dict.txt`, the 14 result CSVs, the 10 `.tex` tables, the 4 PNG figures and the two
-> compiled binaries. Every remaining removal requires explicit approval (`CLAUDE.md` §10, §14).
+> **Second round executed — 2026-08-24.** Also removed: the **14** `*_results.csv`, the **10**
+> `*_table.tex`, the **4** `parallel_*.png`, and the compiled binaries **`epic-v3.1`** and
+> **`pic-v3.1`** — 30 further files. Generated output now lands under `results/{raw,tables,figures}`
+> and the tree is git-ignored; binaries are built with `make`.
+>
+> **`dict.txt` is KEPT** by decision of the author (see `docs/dictionary.md`).
+>
+> Everything else in this document remains a **proposal**. Every remaining removal requires explicit
+> approval (`CLAUDE.md` §10, §14).
 
 **Recovery.** Every file listed here is recoverable from the `pre-artifact-cleanup` tag:
 `git checkout pre-artifact-cleanup -- <path>`
@@ -110,7 +116,13 @@ See `docs/licensing.md` for the full analysis and cited sources.
 
 ---
 
-## 7. The published baseline — recommendation departs from "remove"
+## 7. The published baseline — recommendation NOT taken (superseded 2026-08-24)
+
+> **Decision:** the author chose removal. All 28 files were deleted on 2026-08-24; the scripts that
+> regenerate them are kept, and the historical copies remain at `pre-artifact-cleanup`. The
+> recommendation below is retained as the record of the argument that was considered and overruled.
+
+### Original recommendation
 
 The 14 result CSVs, 10 LaTeX tables and 4 PNG figures (688 KB total) are generated outputs, but
 **the recommendation is to retain them, relocated to `results/published/`.**

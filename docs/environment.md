@@ -192,8 +192,28 @@ Flags: `-std=c++17 -O3 -pthread`.
 Audited and found clean: no macOS-only headers, no compiler-specific extensions,
 no `#pragma`, no inline assembly, no architecture assumptions.
 
-The committed `epic-v3.1` and `pic-v3.1` are **macOS arm64** binaries and will
-not run on Linux. Run `make` first.
+**The binaries are no longer committed.** `epic-v3.1` and `pic-v3.1` must be built
+locally with `make`; both are git-ignored. The previously committed copies were
+macOS/arm64 and would not run on Linux.
+
+### Where output goes
+
+Experiments write only under `results/`, never the repository root:
+
+```
+results/raw/      *_results.csv    measurements
+results/tables/   *_table.tex      LaTeX tables built from the CSVs
+results/figures/  *.png            plots built from the CSVs
+results/logs/     per-experiment stdout/stderr
+results/tmp/      scratch
+```
+
+Runners create these on demand, and the whole tree is git-ignored, so a run can
+never overwrite source files or documentation. The layout is defined once in
+`dataset_config.py` (`RESULTS_RAW_DIR`, `RESULTS_TABLES_DIR`, `RESULTS_FIGURES_DIR`).
+
+No generated results are committed. A fresh full run reproduces them; nothing in
+the pipeline requires a pre-existing CSV.
 
 ---
 

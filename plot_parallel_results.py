@@ -20,23 +20,25 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from dataset_config import RESULTS_FIGURES_DIR, results_path
+
 # =====================================================
 # INPUT CSV FILES
 # =====================================================
 
-PARALLEL_TIME_CSV = "parallel_time_results.csv"
-PARALLEL_MEMORY_CSV = "parallel_memory_results.csv"
-PARALLEL_SEARCH_CSV = "parallel_search_results.csv"
-PARALLEL_REPLACE_CSV = "parallel_replace_results.csv"
+PARALLEL_TIME_CSV = results_path("raw", "parallel_time_results.csv")
+PARALLEL_MEMORY_CSV = results_path("raw", "parallel_memory_results.csv")
+PARALLEL_SEARCH_CSV = results_path("raw", "parallel_search_results.csv")
+PARALLEL_REPLACE_CSV = results_path("raw", "parallel_replace_results.csv")
 
 # =====================================================
 # OUTPUT FIGURES
 # =====================================================
 
-PARALLEL_TIME_PNG = "parallel_time.png"
-PARALLEL_MEMORY_PNG = "parallel_memory.png"
-PARALLEL_SEARCH_PNG = "parallel_search.png"
-PARALLEL_REPLACE_PNG = "parallel_replace.png"
+PARALLEL_TIME_PNG = results_path("figures", "parallel_time.png")
+PARALLEL_MEMORY_PNG = results_path("figures", "parallel_memory.png")
+PARALLEL_SEARCH_PNG = results_path("figures", "parallel_search.png")
+PARALLEL_REPLACE_PNG = results_path("figures", "parallel_replace.png")
 
 # =====================================================
 # Plot Style Configuration
@@ -73,8 +75,13 @@ def plot_dataframe(
 ) -> None:
 
     if not os.path.exists(csv_path):
-        print(f"[WARNING] Missing CSV: {csv_path}")
+        print(f"[SKIP] missing input: {csv_path}")
+        print(f"       Generated results are no longer committed. Run the parallel "
+              f"experiment first:")
+        print(f"         python3 run_parallel_benchmarks.py --input datasets/f10.txt")
         return
+
+    os.makedirs(os.path.dirname(figure_path) or ".", exist_ok=True)
 
     df = pd.read_csv(csv_path)
 
