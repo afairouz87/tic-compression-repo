@@ -178,6 +178,79 @@ SOURCE_DIRS = [STANDARD_EBOOKS_CLEAN_DIR, GUTENBERG_RAW_DIR]
 
 MANIFEST_CSV = "manifest.csv"
 
+# ---------------------------------------------------------------------------
+# Generated-output layout
+# ---------------------------------------------------------------------------
+# Experiment output is written under results/, never into the repository root.
+# Previously every runner used RESULTS_DIR = ".", so a run overwrote the
+# committed baseline in place and scattered CSVs, tables and figures among the
+# source files.
+#
+#   results/raw/      *_results.csv   measurements
+#   results/tables/   *_table.tex     LaTeX tables built from the CSVs
+#   results/figures/  *.png           plots built from the CSVs
+#   results/logs/     per-experiment stdout/stderr captures
+#   results/tmp/      scratch space
+#
+# All paths are repository-relative. Runners create these directories on demand
+# via dependencies.require_writable_dir(). The whole tree is git-ignored.
+
+RESULTS_ROOT = "results"
+RESULTS_RAW_DIR = os.path.join(RESULTS_ROOT, "raw")
+RESULTS_TABLES_DIR = os.path.join(RESULTS_ROOT, "tables")
+RESULTS_FIGURES_DIR = os.path.join(RESULTS_ROOT, "figures")
+RESULTS_LOGS_DIR = os.path.join(RESULTS_ROOT, "logs")
+RESULTS_TMP_DIR = os.path.join(RESULTS_ROOT, "tmp")
+
+
+def results_path(kind: str, name: str) -> str:
+    """kind is one of: raw, tables, figures, logs, tmp."""
+    dirs = {
+        "raw": RESULTS_RAW_DIR, "tables": RESULTS_TABLES_DIR,
+        "figures": RESULTS_FIGURES_DIR, "logs": RESULTS_LOGS_DIR,
+        "tmp": RESULTS_TMP_DIR,
+    }
+    if kind not in dirs:
+        raise KeyError(f"Unknown results kind {kind!r}; expected one of {sorted(dirs)}")
+    return os.path.join(dirs[kind], name)
+
+
+# ---------------------------------------------------------------------------
+# Dictionary
+# ---------------------------------------------------------------------------
+# Both binaries load a dictionary at start-up for every operation. The path is
+# resolved identically by the C++ (resolveDictionaryPath) and by this module:
+#
+#   1. $TIC_DICT_PATH, if set and non-empty
+#   2. ./dict.txt      relative to the current working directory (historical default)
+#
+# See docs/dictionary.md.
+
+DICT_PATH_ENV_VAR = "TIC_DICT_PATH"
+DEFAULT_DICT_FILENAME = "dict.txt"
+
+
+def resolve_dict_path() -> str:
+    """Resolve the dictionary path exactly as the C++ binaries do."""
+    override = os.environ.get(DICT_PATH_ENV_VAR, "").strip()
+    return override if override else DEFAULT_DICT_FILENAME
+
+
+# Fingerprint of the dictionary used by the published artifact, measured from
+# the tracked file on 2026-08-23. This identifies the historical dictionary; it
+# is NOT a licence grant and does not authorise redistribution of the contents.
+# See docs/licensing.md section 3.
+HISTORICAL_DICT = {
+    "filename": DEFAULT_DICT_FILENAME,
+    "sha256": "9b1d044dcca20e959a241656ecdeff0d59f37fe0a59499cec77a19d355cae3b8",
+    "size_bytes": 2823482,
+    "entries": 333350,
+    "newline": "LF",
+    "trailing_newline": True,
+    "structure": "17 punctuation entries, then 333,333 words from the frequency CSV, in rank order",
+    "provenance": "derived from the Kaggle English Word Frequency dataset; data licence unresolved",
+}
+
 __all__ = [
     "MB",
     "DATASET_DIR_ENV_VAR",
@@ -200,4 +273,15 @@ __all__ = [
     "GUTENBERG_RAW_DIR",
     "SOURCE_DIRS",
     "MANIFEST_CSV",
+    "RESULTS_ROOT",
+    "RESULTS_RAW_DIR",
+    "RESULTS_TABLES_DIR",
+    "RESULTS_FIGURES_DIR",
+    "RESULTS_LOGS_DIR",
+    "RESULTS_TMP_DIR",
+    "results_path",
+    "DICT_PATH_ENV_VAR",
+    "DEFAULT_DICT_FILENAME",
+    "resolve_dict_path",
+    "HISTORICAL_DICT",
 ]

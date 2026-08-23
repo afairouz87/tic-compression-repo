@@ -26,21 +26,26 @@ Checks, for TIC (epic-v3.1) and PIC (pic-v3.1) independently:
 
 Exit codes: 0 all checks passed, 1 something failed.
 
-Run from the repository root: the binaries resolve dict.txt against the CWD.
+Run from the repository root. By default this test supplies its own synthetic
+dictionary via $TIC_DICT_PATH, so the historical dict.txt is NOT required.
 """
 
 from __future__ import annotations
 
 import argparse
 import filecmp
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+from dataset_config import DICT_PATH_ENV_VAR
+
 from dependencies import (
     MissingDependencyError,
+    check_dictionary as dep_check_dictionary,
     PIC_BINARY_NAME,
     TIC_BINARY_NAME,
     require_executables,
@@ -61,6 +66,50 @@ REPLACE_WORD = "THE"
 
 SCHEMES = [("TIC", TIC_BINARY_NAME, ".tic"), ("PIC", PIC_BINARY_NAME, ".pic")]
 
+# A tiny dictionary the test writes itself, so the smoke test never requires the
+# historical dict.txt -- which is a third-party derivative that cannot currently
+# be redistributed (docs/licensing.md section 3).
+#
+# The 17 leading punctuation entries mirror the historical layout; the words are
+# just those in SAMPLE_TEXT. Words absent from a dictionary become "special code
+# words", so the round trip stays byte-exact regardless.
+#
+# This validates FUNCTION only. Compressed sizes produced with it are unrelated
+# to the published measurements.
+SYNTHETIC_DICT_ENTRIES = [
+    ",", ".", "-", ":", "?", "(", ")", "!", ";", "/", "\\", '"', "\u201c", "\u201d", "'", "\u2019", "`",
+    "the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog",
+    "a", "journey", "of", "thousand", "miles", "begins", "with", "single", "step",
+    "to", "be", "or", "not", "that", "is", "question",
+    "all", "glitters", "gold", "and", "every", "cloud", "has", "silver", "lining",
+    "rain", "in", "spain", "falls", "mainly", "on", "plain",
+]
+
+
+# Filler entries appended after the real words.
+#
+# Necessary because of a pre-existing bound in PIC: pic-v3.1.cpp:2041 rejects
+# `finalSerial >= NUMBER_OF_WORDS_DICT`, but serials carry the +CODE_WORD_OFFSET
+# (5) shift while NUMBER_OF_WORDS_DICT is a raw line count. The top 5 entries of
+# any dictionary are therefore unusable by PIC decompression. With the
+# historical 333,350-entry dictionary only the five rarest words are affected,
+# so it never surfaces; with a 58-entry dictionary it fails immediately.
+#
+# Padding keeps every real word at a low serial. It is a property of the test
+# fixture only -- no TIC or PIC behaviour is modified.
+SYNTHETIC_DICT_PADDING = 64
+
+
+def write_synthetic_dictionary(workdir: Path) -> Path:
+    path = workdir / "synthetic_dict.txt"
+    entries = list(SYNTHETIC_DICT_ENTRIES) + [
+        f"zzpadding{i:04d}" for i in range(SYNTHETIC_DICT_PADDING)
+    ]
+    with path.open("w", encoding="utf-8", newline="\n") as fh:
+        for entry in entries:
+            fh.write(entry + "\n")
+    return path
+
 PASS, FAIL = "PASS", "FAIL"
 _results: list[tuple[str, str, str]] = []
 
@@ -71,10 +120,19 @@ def record(status, name, detail=""):
     return status == PASS
 
 
-def run(cmd, timeout=120):
-    """Run a command from the repository root. Returns (ok, stdout, stderr)."""
+def run(cmd, timeout=120, dict_path=None):
+    """
+    Run a command from the repository root. Returns (ok, stdout, stderr).
+
+    When dict_path is given it is passed via $TIC_DICT_PATH, which is how both
+    binaries resolve their dictionary.
+    """
+    env = None
+    if dict_path is not None:
+        env = dict(os.environ)
+        env[DICT_PATH_ENV_VAR] = str(dict_path)
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
         return False, "", f"timed out after {timeout}s"
     except FileNotFoundError as exc:
@@ -103,15 +161,25 @@ def build() -> bool:
     return all_ok
 
 
-def check_prerequisites() -> bool:
+def check_prerequisites(use_historical: bool) -> bool:
     print("\nPrerequisites")
     print("-------------")
-    ok = record(PASS if Path("dict.txt").is_file() else FAIL, "dict.txt",
-                "run from the repository root" if not Path("dict.txt").is_file() else "present")
-    return ok
+
+    if not use_historical:
+        return record(PASS, "dictionary",
+                      "synthetic dictionary created by this test "
+                      "(historical dict.txt not required)")
+
+    info = dep_check_dictionary()
+    if not info["is_file"]:
+        return record(FAIL, "dictionary", f"--historical-dict requested but not found: {info['path']}")
+    if info["matches_historical"]:
+        return record(PASS, "dictionary", f"{info['path']} (SHA-256 matches historical)")
+    return record(PASS, "dictionary",
+                  f"{info['path']} (present; SHA-256 does NOT match the historical dictionary)")
 
 
-def test_scheme(label, binary, ext, workdir: Path) -> bool:
+def test_scheme(label, binary, ext, workdir: Path, dict_path=None) -> bool:
     print(f"\n{label} ({binary})")
     print("-" * (len(label) + len(binary) + 3))
 
@@ -127,7 +195,7 @@ def test_scheme(label, binary, ext, workdir: Path) -> bool:
     ok = True
 
     # 1. compress
-    good, _, err = run([f"./{binary}", "-c", "-t", "1", str(src), str(compressed)])
+    good, _, err = run([f"./{binary}", "-c", "-t", "1", str(src), str(compressed)], dict_path=dict_path)
     if not good:
         return record(FAIL, "compress", err.strip()[:160])
     if not compressed.is_file() or compressed.stat().st_size == 0:
@@ -136,7 +204,7 @@ def test_scheme(label, binary, ext, workdir: Path) -> bool:
                  f"{src.stat().st_size:,} B -> {compressed.stat().st_size:,} B")
 
     # 2. decompress
-    good, _, err = run([f"./{binary}", "-d", "-t", "1", str(compressed), str(restored)])
+    good, _, err = run([f"./{binary}", "-d", "-t", "1", str(compressed), str(restored)], dict_path=dict_path)
     if not good:
         return record(FAIL, "decompress", err.strip()[:160])
     ok &= record(PASS, "decompress", f"{restored.stat().st_size:,} B")
@@ -148,13 +216,13 @@ def test_scheme(label, binary, ext, workdir: Path) -> bool:
 
     # 4. lookup (-l): output file argument is ignored but must be supplied
     good, out, err = run([f"./{binary}", "-l", "-t", "1", str(compressed),
-                          str(workdir / "ignored.out"), SEARCH_WORD])
+                          str(workdir / "ignored.out"), SEARCH_WORD], dict_path=dict_path)
     ok &= record(PASS if good else FAIL, "lookup",
                  f'searched "{SEARCH_WORD}"' if good else err.strip()[:160])
 
     # 5. lookup-and-replace (-r)
     good, out, err = run([f"./{binary}", "-r", "-t", "1", str(compressed),
-                          str(replaced), SEARCH_WORD, REPLACE_WORD])
+                          str(replaced), SEARCH_WORD, REPLACE_WORD], dict_path=dict_path)
     ok &= record(PASS if good else FAIL, "lookup-and-replace",
                  f'"{SEARCH_WORD}" -> "{REPLACE_WORD}"' if good else err.strip()[:160])
 
@@ -168,6 +236,9 @@ def main(argv=None) -> int:
                         help="Do not run make; test the existing binaries.")
     parser.add_argument("--keep", action="store_true",
                         help="Keep the temporary working directory.")
+    parser.add_argument("--historical-dict", action="store_true",
+                        help="Use the resolved dict.txt instead of the synthetic one. "
+                             "Not required: the default needs no third-party dictionary.")
     args = parser.parse_args(argv)
 
     print("TIC artifact -- functional smoke test")
@@ -180,7 +251,7 @@ def main(argv=None) -> int:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return 1
 
-    ok = check_prerequisites()
+    ok = check_prerequisites(args.historical_dict)
 
     if not args.no_build:
         ok &= build()
@@ -189,8 +260,18 @@ def main(argv=None) -> int:
 
     workdir = Path(tempfile.mkdtemp(prefix="tic_smoke_"))
     try:
+        if args.historical_dict:
+            dict_path = None          # binaries resolve it themselves
+            print(f"\n[INFO] Using the resolved dictionary "
+                  f"({dep_check_dictionary()['path']}).")
+        else:
+            dict_path = write_synthetic_dictionary(workdir)
+            print(f"\n[INFO] Using a synthetic dictionary "
+                  f"({len(SYNTHETIC_DICT_ENTRIES)} entries) via ${DICT_PATH_ENV_VAR}.")
+            print("[INFO] Compressed sizes below are NOT comparable to published results.")
+
         for label, binary, ext in SCHEMES:
-            ok &= test_scheme(label, binary, ext, workdir)
+            ok &= test_scheme(label, binary, ext, workdir, dict_path=dict_path)
     finally:
         if args.keep:
             print(f"\n[INFO] Working directory kept: {workdir}")

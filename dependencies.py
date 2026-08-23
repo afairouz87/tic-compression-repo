@@ -257,6 +257,83 @@ def require_binaries(names=(TIC_BINARY_NAME, PIC_BINARY_NAME)) -> None:
         )
 
 
+def check_dictionary(path=None):
+    """
+    Inspect the dictionary without raising. Returns a dict with:
+        path, exists, is_file, readable, empty, size, sha256, matches_historical
+
+    `sha256` is computed only when the file is readable and non-empty, because
+    hashing is the expensive part.
+    """
+    from dataset_config import HISTORICAL_DICT, resolve_dict_path, sha256_of
+
+    p = Path(path) if path is not None else Path(resolve_dict_path())
+    info = {
+        "path": str(p), "exists": p.exists(), "is_file": p.is_file(),
+        "readable": False, "empty": None, "size": None,
+        "sha256": None, "matches_historical": None,
+    }
+    if not info["is_file"]:
+        return info
+
+    info["size"] = p.stat().st_size
+    info["empty"] = info["size"] == 0
+    info["readable"] = os.access(p, os.R_OK)
+
+    if info["readable"] and not info["empty"]:
+        info["sha256"] = sha256_of(p)
+        info["matches_historical"] = info["sha256"] == HISTORICAL_DICT["sha256"]
+
+    return info
+
+
+def require_dictionary(path=None, historical: bool = False):
+    """
+    Validate the dictionary before an experiment starts.
+
+    Always enforced: exists, is a regular file, non-empty, readable.
+
+    `historical=True` additionally requires a SHA-256 match against the
+    dictionary that produced the published results. Without it a mismatch is
+    reported by the caller as a warning, never silently accepted -- a different
+    dictionary produces different compressed output and therefore does NOT
+    reproduce the published measurements.
+    """
+    from dataset_config import DICT_PATH_ENV_VAR, HISTORICAL_DICT
+
+    info = check_dictionary(path)
+    p = info["path"]
+
+    if not info["exists"]:
+        raise MissingDependencyError(
+            f"Dictionary not found: {p}\n"
+            f"  Every TIC/PIC operation requires it.\n"
+            f"  Set ${DICT_PATH_ENV_VAR} to its location, or run from a directory\n"
+            f"  containing {HISTORICAL_DICT['filename']}.\n"
+            f"  See docs/dictionary.md for how to obtain or build one."
+        )
+    if not info["is_file"]:
+        raise MissingDependencyError(f"Dictionary path is not a regular file: {p}")
+    if info["empty"]:
+        raise MissingDependencyError(f"Dictionary is empty: {p}")
+    if not info["readable"]:
+        raise MissingDependencyError(f"Dictionary is not readable: {p}")
+
+    if historical and not info["matches_historical"]:
+        raise MissingDependencyError(
+            f"Dictionary SHA-256 does not match the historical artifact dictionary.\n"
+            f"  path     : {p}\n"
+            f"  expected : {HISTORICAL_DICT['sha256']}\n"
+            f"  actual   : {info['sha256']}\n"
+            f"  Historical-reproduction mode requires the exact dictionary that\n"
+            f"  produced the published results. A different dictionary yields\n"
+            f"  different compressed output and does NOT reproduce them.\n"
+            f"  See docs/dictionary.md."
+        )
+
+    return info
+
+
 def require_writable_dir(path, purpose: str = "") -> None:
     p = Path(path)
     try:
@@ -273,7 +350,8 @@ def require_writable_dir(path, purpose: str = "") -> None:
         )
 
 
-def preflight(experiment: str, input_files=(), output_dirs=(), binaries=True) -> None:
+def preflight(experiment: str, input_files=(), output_dirs=(), binaries=True,
+              historical_dict: bool = False) -> None:
     """
     Validate everything an experiment needs, before it starts.
 
@@ -291,6 +369,7 @@ def preflight(experiment: str, input_files=(), output_dirs=(), binaries=True) ->
     require_executables(spec["executables"], purpose=f"the {experiment} experiment")
     if binaries:
         require_binaries()
+        require_dictionary(historical=historical_dict)
     if input_files:
         require_input_files(input_files, purpose=f"the {experiment} experiment")
     for d in output_dirs:

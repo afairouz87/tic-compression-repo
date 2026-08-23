@@ -108,6 +108,43 @@ uint32_t NUMBER_OF_WORDS_DICT = 0;
 // *********************************************
 //            Main Function
 // *********************************************
+// ---------------------------------------------------------------------------
+// Dictionary path resolution
+// ---------------------------------------------------------------------------
+// The dictionary path is resolved once, at start-up, in this order:
+//
+//   1. $TIC_DICT_PATH, if set and non-empty
+//   2. "dict.txt" relative to the current working directory (historical default)
+//
+// The environment variable was chosen over a new command-line flag because the
+// argument parser validates argc strictly (6, 7 or 8); adding a flag would
+// change every existing invocation. Every documented command keeps working
+// unchanged, and the compression algorithm is unaffected: the same dictionary
+// bytes always produce the same output.
+//
+// See docs/dictionary.md.
+static void resolveDictionaryPath()
+{
+    const char *envPath = getenv("TIC_DICT_PATH");
+
+    if (envPath != nullptr && envPath[0] != '\0')
+        dictFilename = envPath;
+
+    ifstream probe(dictFilename);
+    if (!probe.is_open())
+    {
+        cerr << "Main Error: cannot open the dictionary file: " << dictFilename << "\n"
+             << "  The dictionary is required for every operation.\n"
+             << "  Set TIC_DICT_PATH to its location, for example:\n"
+             << "    TIC_DICT_PATH=/path/to/dict.txt " << "<binary> -c -t 1 in.txt out\n"
+             << "  Or run from a directory containing dict.txt.\n"
+             << "  See docs/dictionary.md for how to obtain or build one." << endl;
+        exit(1);
+    }
+    probe.close();
+}
+
+
 int main(int argc, char *argv[])
 {
     // int main() {
@@ -179,6 +216,8 @@ int main(int argc, char *argv[])
 
     // Record the start time
     auto start = high_resolution_clock::now();
+
+    resolveDictionaryPath();
 
     NUMBER_OF_WORDS_DICT = countLinesInFile(dictFilename);
     cout << "Number of lines in the dictionary file: " << NUMBER_OF_WORDS_DICT << endl;

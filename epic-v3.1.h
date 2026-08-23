@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <cstdint> // For uint8_t
+#include <cstdlib> // For getenv (dictionary path resolution)
 #include <fstream>
 #include <sstream>
 #include <unordered_map>  // hash table library: (key,value) pair

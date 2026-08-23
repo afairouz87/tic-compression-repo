@@ -38,6 +38,7 @@ from pathlib import Path
 
 from dependencies import (
     EXECUTABLES,
+    check_dictionary as dep_check_dictionary,
     MIN_PYTHON,
     PIC_BINARY_NAME,
     PYTHON_PACKAGES,
@@ -47,6 +48,13 @@ from dependencies import (
 )
 from dataset_config import (
     BENCHMARK_DATASET_NAMES,
+    RESULTS_FIGURES_DIR,
+    RESULTS_LOGS_DIR,
+    RESULTS_RAW_DIR,
+    RESULTS_TABLES_DIR,
+    RESULTS_TMP_DIR,
+    DICT_PATH_ENV_VAR,
+    HISTORICAL_DICT,
     DATASET_DIR,
     PARALLEL_DATASET_NAME,
     dataset_path,
@@ -202,14 +210,48 @@ def check_binaries(rep: Report) -> None:
 
 
 def check_dictionary(rep: Report) -> None:
+    """
+    Three distinct outcomes, never conflated:
+      PASS  present and the SHA-256 matches the historical artifact dictionary
+      WARN  present but a different dictionary -> does NOT reproduce the paper
+      FAIL  missing, unreadable, empty, or not a regular file
+    """
     rep.section("Dictionary")
-    p = Path("dict.txt")
-    if p.is_file():
-        rep.add(PASS, "data", "dict.txt", f"{p.stat().st_size:,} bytes (CWD-relative)")
+
+    info = dep_check_dictionary()
+    path = info["path"]
+    src = (f"${DICT_PATH_ENV_VAR}" if os.environ.get(DICT_PATH_ENV_VAR, "").strip()
+           else "default, CWD-relative")
+    rep.add(INFO, "data", "dictionary path", f"{path}  ({src})", required=False)
+
+    if not info["exists"]:
+        rep.add(FAIL, "data", "dictionary",
+                f"not found: {path}   (set ${DICT_PATH_ENV_VAR}, or see docs/dictionary.md)",
+                affects="all experiments; every TIC/PIC operation loads it")
+        return
+    if not info["is_file"]:
+        rep.add(FAIL, "data", "dictionary", f"not a regular file: {path}",
+                affects="all experiments")
+        return
+    if info["empty"]:
+        rep.add(FAIL, "data", "dictionary", f"empty file: {path}", affects="all experiments")
+        return
+    if not info["readable"]:
+        rep.add(FAIL, "data", "dictionary", f"not readable: {path}", affects="all experiments")
+        return
+
+    if info["matches_historical"]:
+        rep.add(PASS, "data", "dictionary",
+                f"{info['size']:,} bytes, SHA-256 matches the historical artifact dictionary")
     else:
-        rep.add(FAIL, "data", "dict.txt",
-                "not found -- run from the repository root",
-                affects="all experiments; the binaries resolve dict.txt against the CWD")
+        rep.add(WARN, "data", "dictionary",
+                f"{info['size']:,} bytes, SHA-256 does NOT match the historical dictionary",
+                affects="results will not reproduce the published measurements "
+                        "(a different dictionary changes compressed output). "
+                        "See docs/dictionary.md",
+                required=False)
+        rep.add(INFO, "data", "  expected sha256", HISTORICAL_DICT["sha256"], required=False)
+        rep.add(INFO, "data", "  actual sha256", info["sha256"], required=False)
 
 
 def check_datasets(rep: Report) -> None:
@@ -237,7 +279,8 @@ def check_datasets(rep: Report) -> None:
 
 def check_directories(rep: Report) -> None:
     rep.section("Output directories")
-    for d in (".", "results/logs", "results/tmp"):
+    for d in (".", RESULTS_RAW_DIR, RESULTS_TABLES_DIR, RESULTS_FIGURES_DIR,
+              RESULTS_LOGS_DIR, RESULTS_TMP_DIR):
         p = Path(d)
         if p.exists():
             status = PASS if os.access(p, os.W_OK) else FAIL
