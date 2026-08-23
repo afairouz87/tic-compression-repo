@@ -14,6 +14,12 @@ Classification of every tracked file for the public TIC artifact release.
 > **`pic-v3.1`** — 30 further files. Generated output now lands under `results/{raw,tables,figures}`
 > and the tree is git-ignored; binaries are built with `make`.
 >
+> **Third round executed — 2026-08-24.** All **9** external dataset acquisition scripts removed:
+> `build_standard_ebooks_catalog.py`, `download_gutenberg_texts.py`,
+> `download_standard_ebooks_from_catalog{,_v1}.py` and `download_standard_ebooks_to_txt{,_v1..v4}.py`.
+> The artifact no longer downloads or crawls anything; source corpora are external inputs supplied
+> locally. `requests`, `beautifulsoup4`, `lxml` and `ebooklib` were dropped with them.
+>
 > **`dict.txt` is KEPT** by decision of the author (see `docs/dictionary.md`).
 >
 > Everything else in this document remains a **proposal**. Every remaining removal requires explicit
@@ -93,12 +99,12 @@ earlier (write 791-806, plot 811+). Not a dependency.
 | `run.py` | 4 | Ad-hoc scratch measurement; unreferenced by the pipeline | Git history | No | **REMOVE** |
 | `measureTime.py` | 4 | Scratch timing; line 39 points at `./pic-v1`, which no longer exists | Git history | No | **REMOVE** |
 | `compression_parallel_debug.py` | 4 | Debug loop; hardcodes `/tmp/test.tic` and `../gutenberg_ebooks/raw` | Git history | No | **REMOVE** |
-| `download_standard_ebooks_to_txt.py` | 4 | **Not invoked** by `prepare_datasets.py`, which uses the `_from_catalog` route | Git history | No | **REMOVE** |
-| `download_standard_ebooks_to_txt_v1.py` | 4 | Unreferenced anywhere | Git history | No | **REMOVE** |
-| `download_standard_ebooks_to_txt_v2.py` | 4 | Unreferenced anywhere | Git history | No | **REMOVE** |
-| `download_standard_ebooks_to_txt_v3.py` | 4 | Unreferenced anywhere | Git history | No | **REMOVE** |
-| `download_standard_ebooks_to_txt_v4.py` | 4 | Unreferenced anywhere | Git history | No | **REMOVE** |
-| `download_standard_ebooks_from_catalog_v1.py` | 4 | Superseded by the non-`_v1` version | Git history | No | **REMOVE** |
+| `download_standard_ebooks_to_txt.py` **[REMOVED 2026-08-24]** | 4 | **Not invoked** by `prepare_datasets.py`, which uses the `_from_catalog` route | Git history | No | **REMOVE** |
+| `download_standard_ebooks_to_txt_v1.py` **[REMOVED 2026-08-24]** | 4 | Unreferenced anywhere | Git history | No | **REMOVE** |
+| `download_standard_ebooks_to_txt_v2.py` **[REMOVED 2026-08-24]** | 4 | Unreferenced anywhere | Git history | No | **REMOVE** |
+| `download_standard_ebooks_to_txt_v3.py` **[REMOVED 2026-08-24]** | 4 | Unreferenced anywhere | Git history | No | **REMOVE** |
+| `download_standard_ebooks_to_txt_v4.py` **[REMOVED 2026-08-24]** | 4 | Unreferenced anywhere | Git history | No | **REMOVE** |
+| `download_standard_ebooks_from_catalog_v1.py` **[REMOVED 2026-08-24]** | 4 | Superseded by the non-`_v1` version | Git history | No | **REMOVE** |
 | `backup_versions/` (5 files, 4.9 MB) **[REMOVED 2026-08-23]** | 4 | Manual `.bk` snapshots, two dated `Makefile` copies, and `unigram_freq_bk.csv`. Git already holds this history | Git history | No | **REMOVE** (see §6 for the CSV) |
 | `.vscode/settings.json` | 4 | Personal editor config, incl. `"C_Cpp.errorSquiggles": "disabled"`. Already named in `.gitignore:9` but tracked, so the rule never applies | n/a | No | **REMOVE** |
 

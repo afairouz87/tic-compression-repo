@@ -66,11 +66,11 @@ python3 -m pip install -r requirements.txt
 | `pandas` | **required** | every benchmark runner; tables and CSV I/O |
 | `psutil` | **required** | all memory measurements (see §5) |
 | `matplotlib` | experiment | parallel experiments (figures), `plot_parallel_*.py` |
-| `requests` | experiment | dataset acquisition (`prepare_datasets.py fetch`) |
-| `beautifulsoup4` (`bs4`) | experiment | dataset acquisition |
-| `lxml` | experiment | dataset acquisition (parser backend) |
-| `ebooklib` | experiment | dataset acquisition (EPUB conversion) |
 | `numpy` | *not a direct dependency* | never imported here; arrives with pandas/matplotlib |
+
+`requests`, `beautifulsoup4`, `lxml` and `ebooklib` were removed on 2026-08-24 along with the
+external dataset acquisition scripts. Nothing retained imports them, and the dataset pipeline is now
+pure standard library.
 
 Pinning is **lower-bound only**, so the artifact keeps installing on newer
 toolchains. Pin exactly only if you need bit-reproducible figures.

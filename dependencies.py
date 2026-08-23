@@ -74,17 +74,8 @@ PYTHON_PACKAGES = [
         ["memory measurements in search, parallel and compression runners"],
         "Required whenever memory columns are produced. A missing psutil used to "
         "yield silent zeros; it is now a hard failure. See docs/environment.md."),
-    Dep("requests", "experiment",
-        ["dataset acquisition (prepare_datasets.py fetch)"],
-        "Not needed to build datasets from an existing corpus, nor to benchmark."),
-    Dep("bs4", "experiment",
-        ["dataset acquisition (prepare_datasets.py fetch)"],
-        "Imported as `bs4`.", pip="beautifulsoup4"),
-    Dep("ebooklib", "experiment",
-        ["dataset acquisition: Standard Ebooks EPUB conversion"]),
-    Dep("lxml", "experiment",
-        ["dataset acquisition: HTML/XML parser backend for beautifulsoup4"],
-        "Never imported directly; named as the parser in the download scripts."),
+    # requests / beautifulsoup4 / lxml / ebooklib were removed on 2026-08-24 with
+    # the external acquisition scripts. Nothing retained imports them.
     Dep("numpy", "optional",
         [],
         "Not imported anywhere in this repository. Present only transitively as a "
@@ -142,9 +133,9 @@ EXPERIMENT_REQUIREMENTS = {
                           "python": ["pandas", "psutil"]},
     "parallel":          {"executables": ["lbzip2", "sh"],
                           "python": ["pandas", "psutil", "matplotlib"]},
+    # The dataset pipeline is pure standard library: it processes local corpora
+    # and never downloads anything.
     "dataset_build":     {"executables": [], "python": []},
-    "dataset_fetch":     {"executables": [],
-                          "python": ["requests", "bs4", "ebooklib", "lxml"]},
 }
 
 TIC_BINARY_NAME = "epic-v3.1"

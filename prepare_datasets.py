@@ -4,10 +4,9 @@ prepare_datasets.py
 
 Single entry point for preparing the TIC/PIC benchmark datasets.
 
-    python3 prepare_datasets.py                 # check -> build -> verify (no network)
-    python3 prepare_datasets.py check           # dependencies + sources only
-    python3 prepare_datasets.py fetch           # acquire source corpora (NETWORK, hours, GBs)
-    python3 prepare_datasets.py build           # combine sources into f1..f10
+    python3 prepare_datasets.py                 # check -> build -> verify
+    python3 prepare_datasets.py check           # dependencies + local sources only
+    python3 prepare_datasets.py build           # combine local sources into f1..f10
     python3 prepare_datasets.py verify          # count, sizes, and manifest refresh
     python3 prepare_datasets.py verify --sha256 # also checksum every dataset (slow)
 
@@ -16,8 +15,8 @@ Design rules:
   * Every stage fails loudly. A missing dependency, a missing source corpus or a
     short dataset is an error with a non-zero exit code, never a warning that is
     followed by a partial result.
-  * `fetch` is never run implicitly. It performs a multi-gigabyte live crawl and
-    must be requested explicitly.
+  * Nothing is downloaded. The source corpora are external inputs that you
+    supply locally; this artifact never crawls a live catalog.
   * All paths are repository-relative and come from dataset_config.py.
 
 Run from the repository root (the compiled binaries resolve dict.txt the same
@@ -33,7 +32,6 @@ import csv
 import importlib.util
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -70,13 +68,9 @@ MANIFEST_FIELDS = [
 
 # Python packages the *dataset pipeline* needs. The benchmark runners need more
 # (pandas, matplotlib, psutil); those are not required to build datasets.
+# Nothing here is third-party: the pipeline is pure standard library now that
+# the network acquisition stage has been removed.
 BUILD_REQUIREMENTS: list[tuple[str, str]] = []          # stdlib only
-FETCH_REQUIREMENTS: list[tuple[str, str]] = [
-    ("requests", "requests"),
-    ("bs4", "beautifulsoup4"),
-    ("ebooklib", "ebooklib"),
-    ("lxml", "lxml"),
-]
 
 
 class StageError(RuntimeError):
@@ -119,12 +113,10 @@ def missing_packages(requirements: list[tuple[str, str]]) -> list[str]:
     return missing
 
 
-def check_dependencies(for_fetch: bool = False) -> None:
+def check_dependencies() -> None:
     info(f"Python {sys.version.split()[0]} at {sys.executable}")
 
     reqs = list(BUILD_REQUIREMENTS)
-    if for_fetch:
-        reqs += FETCH_REQUIREMENTS
 
     if not reqs:
         ok("No third-party packages required for this stage (standard library only).")
@@ -165,11 +157,21 @@ def check_sources(strict: bool) -> dict[str, int]:
 
     if strict and not found_any:
         raise StageError(
-            "No source text found. Expected cleaned corpora in:\n"
-            f"         {STANDARD_EBOOKS_CLEAN_DIR}/\n"
-            f"         {GUTENBERG_RAW_DIR}/\n"
-            "       Run `python3 prepare_datasets.py fetch` to acquire them "
-            "(network, multi-gigabyte), or point the pipeline at an existing copy."
+            "No local source text found.\n"
+            "       This artifact does not download or crawl anything. The source\n"
+            "       corpora are external inputs that you must supply locally.\n"
+            "\n"
+            "       Expected, relative to the repository root:\n"
+            f"         {STANDARD_EBOOKS_CLEAN_DIR}/*.txt\n"
+            "             cleaned Standard Ebooks plain text (one file per book)\n"
+            f"         {GUTENBERG_RAW_DIR}/*.txt\n"
+            "             raw Project Gutenberg text; clean it first with\n"
+            "             clean_gutenberg_texts.py --input-dir ... --output-dir ...\n"
+            "\n"
+            "       Either directory alone is enough to build the smaller datasets;\n"
+            "       the largest (f10, 769 MB) needs roughly 769 MB of text in total.\n"
+            "       See docs/datasets.md for what these corpora are and where they\n"
+            "       come from."
         )
 
     return counts
@@ -186,9 +188,9 @@ def check_disk_space(dataset_dir: Path, required_bytes: int) -> None:
     ok(f"Disk space: {human_mb(free)} free, {human_mb(required_bytes)} required.")
 
 
-def stage_check(dataset_dir: Path, strict_sources: bool = False, for_fetch: bool = False) -> int:
+def stage_check(dataset_dir: Path, strict_sources: bool = False) -> int:
     info("=== Stage: check ===")
-    check_dependencies(for_fetch=for_fetch)
+    check_dependencies()
 
     resolved = resolve_dataset_dir()
     info(f"Canonical dataset directory : {CANONICAL_DATASET_DIR}/")
@@ -207,49 +209,15 @@ def stage_check(dataset_dir: Path, strict_sources: bool = False, for_fetch: bool
 
 
 # =====================
-# Stage: fetch
+# Source corpora
 # =====================
-
-def run_script(args: list[str]) -> None:
-    printable = " ".join(args)
-    info(f"$ {printable}")
-    result = subprocess.run([sys.executable, *args])
-    if result.returncode != 0:
-        raise StageError(f"stage command failed (exit {result.returncode}): {printable}")
-
-
-def stage_fetch(skip_gutenberg: bool, gutenberg_pool_mb: float) -> int:
-    info("=== Stage: fetch (network) ===")
-    warn("This performs a live crawl of Standard Ebooks and Project Gutenberg.")
-    warn("It downloads several gigabytes and can take hours.")
-    warn("The catalogs change over time: a fetch today does NOT reproduce the "
-         "exact corpus behind the published results. See docs/datasets.md.")
-
-    check_dependencies(for_fetch=True)
-
-    # 1. Standard Ebooks catalog -> standard_ebooks_output/catalog.jsonl
-    run_script(["build_standard_ebooks_catalog.py"])
-
-    # 2. Standard Ebooks EPUB -> txt_clean (targets ~750 MB of cleaned text)
-    run_script(["download_standard_ebooks_from_catalog.py"])
-
-    if skip_gutenberg:
-        warn("Skipping Project Gutenberg stage (--skip-gutenberg).")
-        warn("f10 (769 MB) reaches past the Standard Ebooks corpus and needs "
-             "Gutenberg text; the build stage will fail if the corpus is short.")
-        return 0
-
-    # 3. Project Gutenberg raw text. The downloader defaults to data/raw, but the
-    #    combine stage reads gutenberg_ebooks/raw, so the destination is explicit.
-    run_script([
-        "download_gutenberg_texts.py",
-        "--out-dir", GUTENBERG_RAW_DIR,
-        "--target-pool-mb", str(gutenberg_pool_mb),
-    ])
-
-    ok("Fetch complete.")
-    return 0
-
+#
+# This artifact does NOT download or crawl anything. The acquisition scripts
+# that once crawled Standard Ebooks and Project Gutenberg have been removed:
+# a public artifact should not depend on live, changing external catalogs.
+#
+# The source corpora are EXTERNAL INPUTS that you supply locally. See
+# docs/datasets.md for what they are and where they come from.
 
 # =====================
 # Stage: build
@@ -436,11 +404,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="stage")
     sub.add_parser("check", help="Validate dependencies, sources and disk space.")
-    f = sub.add_parser("fetch", help="Acquire source corpora (NETWORK, multi-GB).")
-    f.add_argument("--skip-gutenberg", action="store_true",
-                   help="Standard Ebooks only; f10 will likely be short.")
-    f.add_argument("--gutenberg-pool-mb", type=float, default=1200.0,
-                   help="Gutenberg download budget in MB (default: 1200).")
     sub.add_parser("build", help="Combine source corpora into f1..f10.")
     sub.add_parser("verify", help="Check count and sizes; refresh the manifest.")
     sub.add_parser("manifest", help="Refresh datasets/manifest.csv only.")
@@ -461,9 +424,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if stage == "check":
             return stage_check(dataset_dir)
-
-        if stage == "fetch":
-            return stage_fetch(args.skip_gutenberg, args.gutenberg_pool_mb)
 
         if stage == "build":
             stage_check(dataset_dir, strict_sources=True)

@@ -25,12 +25,9 @@ psutil>=5.9            # memory measurement; a missing psutil is now a hard erro
 # --- Required for the parallel experiments (figures) ---
 matplotlib>=3.5        # parallel_*.png; also used by plot_parallel_*.py
 
-# --- Required only for dataset acquisition (prepare_datasets.py fetch) ---
-# Not needed to build datasets from an existing corpus, nor to run benchmarks.
-requests>=2.28
-beautifulsoup4>=4.11
-lxml>=4.9
-ebooklib>=0.18
-
 # numpy is intentionally absent: it is not imported anywhere in this repository.
 # It arrives transitively with pandas/matplotlib.
+#
+# requests, beautifulsoup4, lxml and ebooklib were removed on 2026-08-24 together
+# with the external dataset acquisition scripts. Nothing retained imports them,
+# and the dataset pipeline is now pure standard library.

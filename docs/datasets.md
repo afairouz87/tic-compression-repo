@@ -17,14 +17,13 @@ importantly, the limits on how faithfully they can be rebuilt.
 
 ```bash
 # from the repository root
-python3 prepare_datasets.py check          # dependencies, sources, disk space
-python3 prepare_datasets.py fetch          # acquire corpora — NETWORK, hours, several GB
+python3 prepare_datasets.py check          # dependencies, local sources, disk space
 python3 prepare_datasets.py                # check -> build -> verify
 python3 prepare_datasets.py verify --sha256   # checksum every dataset
 ```
 
-`fetch` is never run implicitly. Every stage fails with a non-zero exit code rather than
-continuing with an incomplete dataset.
+**Nothing is downloaded.** The source corpora are external inputs you supply locally (§3). Every
+stage fails with a non-zero exit code rather than continuing with an incomplete dataset.
 
 ---
 
@@ -64,10 +63,17 @@ working directory, so any other CWD fails.
 
 ## 3. Source corpora
 
-| Corpus | Acquisition script | Output | Budget |
-|---|---|---|---|
-| [Standard Ebooks](https://standardebooks.org) | `build_standard_ebooks_catalog.py` → `download_standard_ebooks_from_catalog.py` | `standard_ebooks_output/txt_clean/` | `TARGET_TOTAL_TXT_MB = 750` |
-| [Project Gutenberg](https://www.gutenberg.org) | `download_gutenberg_texts.py` | `gutenberg_ebooks/raw/` | `--target-pool-mb 1200` |
+**This repository does not download, crawl or redistribute either corpus.** The acquisition scripts
+that once did were removed on 2026-08-24: a public artifact should not depend on live, changing
+external catalogs. You obtain the text yourself and place it locally.
+
+| Corpus | Expected local location | Approximate volume used |
+|---|---|---|
+| [Standard Ebooks](https://standardebooks.org) | `standard_ebooks_output/txt_clean/*.txt` — cleaned plain text, one file per book | ~750 MB |
+| [Project Gutenberg](https://www.gutenberg.org) | `gutenberg_ebooks/raw/*.txt` — raw text; clean with `clean_gutenberg_texts.py` | remainder, up to ~1.2 GB |
+
+Either directory alone is enough for the smaller datasets; `f10` (769 MB) needs roughly 769 MB in
+total, read Standard Ebooks first, then Gutenberg.
 
 Both are public-domain literary corpora. Standard Ebooks releases its typography and markup under
 CC0; Project Gutenberg texts are public domain in the US, with trademark conditions attached to the
@@ -79,17 +85,17 @@ whole still has no `LICENSE`; see the inspection report.
 ## 4. Preparation workflow
 
 ```
-1. build_standard_ebooks_catalog.py        crawl the catalog          -> catalog.jsonl
-2. download_standard_ebooks_from_catalog.py fetch EPUB, convert       -> txt_clean/
-3. download_gutenberg_texts.py             fetch raw text            -> gutenberg_ebooks/raw/
-4. clean_gutenberg_texts.py                strip PG header/footer    -> cleaned text
-5. check_gutenberg_books.py                screen unusable books
-6. make_combined_text_files.py             combine + size            -> datasets/f1..f10
-7. prepare_datasets.py verify              count, sizes, checksums   -> datasets/manifest.csv
+   (you supply)                            local corpora  -> standard_ebooks_output/txt_clean/
+                                                          -> gutenberg_ebooks/raw/
+1. clean_gutenberg_texts.py                strip PG header/footer    -> cleaned text
+2. clean_gutenberg_footer.py               strip trailing PG footer
+3. check_gutenberg_books.py                screen unusable books
+4. make_combined_text_files.py             combine + size            -> datasets/f1..f10
+5. prepare_datasets.py verify              count, sizes, checksums   -> datasets/manifest.csv
 ```
 
-Stages 1–5 are network/preprocessing and run under `prepare_datasets.py fetch`. Stages 6–7 run
-offline from whatever source text is already on disk.
+Every stage is local and offline. Stages 4–5 run under `prepare_datasets.py`; stages 1–3 are helper
+scripts you run as needed on your own Gutenberg copy.
 
 ### The gap this replaces
 
@@ -99,12 +105,12 @@ Before this change the pipeline did not connect end to end:
   `../textFiles/` — **nothing bridged the two**.
 - `TARGET_FILES_MB` had `f6`–`f10` **commented out**, so the combine stage produced **five**
   datasets while the runners were configured for **ten**.
-- `download_gutenberg_texts.py` defaulted to `data/raw`, but the combine stage read
+- the Gutenberg downloader defaulted to `data/raw`, but the combine stage read
   `gutenberg_ebooks/raw` and `clean_gutenberg_footer.py` read `../gutenberg_ebooks/raw` — three
   conventions for one directory.
 
-All three are now resolved: one canonical directory, ten targets restored, and the Gutenberg
-destination passed explicitly by `prepare_datasets.py fetch`.
+All three are now resolved: one canonical directory, ten targets restored, and a single documented
+local location per corpus.
 
 ---
 
@@ -394,8 +400,9 @@ corpus snapshots.
    evidence in the repository establishes it. The parallel experiments can still be run, but
    only against an explicitly supplied substitute whose results are not comparable to the
    published parallel tables.
-5. **The datasets are not redistributed**, so an artifact reviewer must rebuild — hours of crawling,
-   ~3.3 GB of output, plus the intermediate corpora.
+5. **Neither the datasets nor the source corpora are redistributed.** A reviewer must obtain the
+   corpora independently and then rebuild — ~3.3 GB of output, plus the source text itself.
+   This artifact provides the processing pipeline, not the data.
 6. **Regenerated results will not match the published tables exactly.** Compression ratios and
    entropies should land close, but any comparison must state that the input corpus differs.
 7. **Rebuilding does not validate the published numbers.** There is still no build stamp or
