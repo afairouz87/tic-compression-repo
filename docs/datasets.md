@@ -63,22 +63,35 @@ working directory, so any other CWD fails.
 
 ## 3. Source corpora
 
-**This repository does not download, crawl or redistribute either corpus.** The acquisition scripts
-that once did were removed on 2026-08-24: a public artifact should not depend on live, changing
-external catalogs. You obtain the text yourself and place it locally.
+**This repository does not download, crawl, convert or redistribute either corpus.** It processes
+**local plain-text input only**. The acquisition scripts that once crawled these catalogs were
+removed on 2026-08-24, and no EPUB-to-text conversion is provided. This is deliberate: a public
+artifact should be deterministic and should not depend on live, changing external catalogs. You
+obtain the text yourself and place it locally.
 
-| Corpus | Expected local location | Approximate volume used |
-|---|---|---|
-| [Standard Ebooks](https://standardebooks.org) | `standard_ebooks_output/txt_clean/*.txt` — cleaned plain text, one file per book | ~750 MB |
-| [Project Gutenberg](https://www.gutenberg.org) | `gutenberg_ebooks/raw/*.txt` — raw text; clean with `clean_gutenberg_texts.py` | remainder, up to ~1.2 GB |
+| Corpus | Expected local location | You must supply | Approximate volume |
+|---|---|---|---|
+| [Standard Ebooks](https://standardebooks.org) | `standard_ebooks_output/txt_clean/*.txt` | **already-prepared plain text**, one file per book | ~750 MB |
+| [Project Gutenberg](https://www.gutenberg.org) | `gutenberg_ebooks/raw/*.txt` | raw text (the artifact cleans it) | remainder, up to ~1.2 GB |
+
+### Standard Ebooks: plain text only, prepared by you
+
+Standard Ebooks distributes EPUB. **This repository intentionally provides neither an EPUB
+downloader nor an EPUB-to-text converter**, and it cannot generate these files for you. Acquiring
+the books and converting them to plain text happens entirely outside the artifact; the pipeline
+begins at `standard_ebooks_output/txt_clean/*.txt`.
+
+Project Gutenberg is different only in that its distribution is already plain text, so
+`clean_gutenberg_texts.py` can strip the PG header and footer for you. Acquisition is still yours.
 
 Either directory alone is enough for the smaller datasets; `f10` (769 MB) needs roughly 769 MB in
 total, read Standard Ebooks first, then Gutenberg.
 
 Both are public-domain literary corpora. Standard Ebooks releases its typography and markup under
 CC0; Project Gutenberg texts are public domain in the US, with trademark conditions attached to the
-Project Gutenberg name and header. **Neither corpus is redistributed here.** The repository as a
-whole still has no `LICENSE`; see the inspection report.
+Project Gutenberg name and header. **Neither corpus is redistributed here.** The repository itself
+is licensed under Apache-2.0 (`LICENSE`); that licence covers the project's own code and
+documentation, not these corpora — see `docs/licensing.md`.
 
 ---
 
@@ -284,11 +297,13 @@ redefine the experiment without saying so.
 ### 7.3 How the runner receives its input
 
 ```bash
-# default: datasets/file-parallel.txt
-python3 run_parallel_benchmarks.py
-
-# reviewer-supplied input (recommended when the historical file is unavailable)
+# recommended: supply the input explicitly
 python3 run_parallel_benchmarks.py --input datasets/f10.txt
+
+# without --input the runner looks for datasets/file-parallel.txt, which is NOT
+# distributed; it then fails with a message naming the flag. Shown for
+# completeness, not as a usable command.
+python3 run_parallel_benchmarks.py
 
 # report size and checksum, then exit without benchmarking
 python3 run_parallel_benchmarks.py --input datasets/f10.txt --sha256 --describe-only

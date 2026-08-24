@@ -503,9 +503,21 @@ PY
 
 ### 9.1 Run script
 
+The parallel runner requires an input file to be supplied explicitly:
+
 ```bash
-python3 run_parallel_benchmarks.py
+python3 run_parallel_benchmarks.py --input datasets/f10.txt
 ```
+
+Notes:
+- The input must be given with `--input`; the runner never substitutes a dataset on its own.
+- The historical input, `file-parallel.txt`, is **not distributed** and its provenance could not be
+  recovered, so it cannot be reconstructed.
+- A reviewer-supplied substitute such as `datasets/f10.txt` reproduces the **functionality and the
+  thread-scaling behaviour**, but **not the exact historical absolute measurements**. The runner
+  labels the input accordingly and prints its size, and `--sha256` reports its checksum; record both
+  alongside any numbers you report.
+- See `docs/datasets.md` section 7 for the full provenance investigation.
 
 ### 9.2 Check output files exist
 
@@ -648,7 +660,7 @@ ls -lh datasets/f3.txt.gz
 
 ```bash
 mv datasets/f10.txt datasets/f10.txt.bak
-python3 run_parallel_benchmarks.py
+python3 run_parallel_benchmarks.py --input datasets/f10.txt
 mv datasets/f10.txt.bak datasets/f10.txt
 ```
 
@@ -666,7 +678,7 @@ python3 run_compression.py
 python3 run_decompression.py
 python3 run_search.py
 python3 run_search_replace.py
-python3 run_parallel_benchmarks.py
+python3 run_parallel_benchmarks.py --input datasets/f10.txt
 ```
 
 ---

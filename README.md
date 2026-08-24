@@ -244,16 +244,24 @@ target size, measured size, checksum and construction; values that cannot be mea
 
 ### You supply the source corpora
 
-**This artifact does not download or crawl anything.** The source corpora are **external inputs**
-that you provide locally; the repository neither redistributes them nor fetches them automatically,
-so a reproduction never depends on a live, changing external catalog.
+**This artifact does not download, crawl or convert anything.** It processes **local plain-text
+input only**. The source corpora are external inputs you provide; the repository neither
+redistributes them nor fetches them, so a reproduction never depends on a live, changing external
+catalog. That is a deliberate design choice: it keeps dataset preparation deterministic and
+independent of catalogs that change underneath it.
 
 `prepare_datasets.py` expects, relative to the repository root:
 
-| Directory | Contents |
-|---|---|
-| `standard_ebooks_output/txt_clean/*.txt` | cleaned Standard Ebooks plain text, one file per book |
-| `gutenberg_ebooks/raw/*.txt` | raw Project Gutenberg text (clean it first with `clean_gutenberg_texts.py`) |
+| Directory | You must supply | The artifact provides |
+|---|---|---|
+| `standard_ebooks_output/txt_clean/*.txt` | **already-prepared plain text**, one file per book | nothing — see below |
+| `gutenberg_ebooks/raw/*.txt` | raw Project Gutenberg text | `clean_gutenberg_texts.py` strips the PG header and footer |
+
+**Standard Ebooks input must arrive as plain text.** Standard Ebooks distributes EPUB, and this
+repository deliberately provides **no EPUB downloader and no EPUB-to-text converter**. Obtaining the
+books and converting them to plain text is outside the artifact and is your responsibility; place
+the resulting `.txt` files in `standard_ebooks_output/txt_clean/`. Nothing here can produce them for
+you.
 
 Either directory alone is enough for the smaller datasets; `f10` needs roughly 769 MB of text in
 total. If neither is present the pipeline fails immediately and tells you exactly what to supply.
