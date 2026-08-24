@@ -31,6 +31,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from dataset_config import results_path
+
 
 PIC_BINARY = "./pic-v3.1"
 TIC_BINARY = "./epic-v3.1"
@@ -42,7 +44,11 @@ def parse_args():
     parser.add_argument("--file", required=True, help="Input text file")
     parser.add_argument("--query", required=True, help="Search string")
     parser.add_argument("--keep-files", action="store_true", help="Keep temp/debug files")
-    parser.add_argument("--output-dir", default="debug_pic_tic_outputs", help="Directory for logs/results")
+    parser.add_argument(
+        "--output-dir",
+        default=results_path("tmp", "debug_pic_tic"),
+        help="Directory for logs/results (default: under results/tmp, which is git-ignored).",
+    )
     return parser.parse_args()
 
 

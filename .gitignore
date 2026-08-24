@@ -18,9 +18,10 @@ nohup.out
 # Backup folders
 results_backup/
 
-# Tool output directories removed from the release artifact.
-# debug_pic_tic.py and run_search_v1.py recreate these on demand
-# (os.makedirs(..., exist_ok=True)); they must not return to the artifact.
+# Legacy tool output directories, removed from the release artifact.
+# Nothing writes here any more -- run_search_v1.py is gone and debug_pic_tic.py
+# now defaults to results/tmp/debug_pic_tic -- but these remain as a backstop so
+# an older local copy of either script cannot reintroduce them.
 search_outputs/
 debug_pic_tic_outputs/
 
@@ -45,9 +46,25 @@ debug_pic_tic_outputs/
 /epic-v3.1
 /pic-v3.1
 
-# Python cache
+# Python cache and bytecode
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Editor and OS artifacts
+.idea/
+*~
+*.swp
+*.swo
+
+# Manual backup / merge leftovers. The repository uses Git for history;
+# .bk snapshots beside the sources were removed from the artifact.
+*.bk
+*.bak
+*.orig
+*.rej
 # Benchmark datasets (multi-gigabyte, rebuilt by prepare_datasets.py).
 # The manifest and the per-dataset source lists are small and are kept.
 /datasets/*

@@ -87,14 +87,13 @@ whole still has no `LICENSE`; see the inspection report.
 ```
    (you supply)                            local corpora  -> standard_ebooks_output/txt_clean/
                                                           -> gutenberg_ebooks/raw/
-1. clean_gutenberg_texts.py                strip PG header/footer    -> cleaned text
-2. clean_gutenberg_footer.py               strip trailing PG footer
-3. check_gutenberg_books.py                screen unusable books
-4. make_combined_text_files.py             combine + size            -> datasets/f1..f10
-5. prepare_datasets.py verify              count, sizes, checksums   -> datasets/manifest.csv
+1. clean_gutenberg_texts.py                strip PG header + footer  -> cleaned text
+2. check_gutenberg_books.py                screen unusable books
+3. make_combined_text_files.py             combine + size            -> datasets/f1..f10
+4. prepare_datasets.py verify              count, sizes, checksums   -> datasets/manifest.csv
 ```
 
-Every stage is local and offline. Stages 4–5 run under `prepare_datasets.py`; stages 1–3 are helper
+Every stage is local and offline. Stages 3–4 run under `prepare_datasets.py`; stages 1–2 are helper
 scripts you run as needed on your own Gutenberg copy.
 
 ### The gap this replaces
@@ -105,9 +104,9 @@ Before this change the pipeline did not connect end to end:
   `../textFiles/` — **nothing bridged the two**.
 - `TARGET_FILES_MB` had `f6`–`f10` **commented out**, so the combine stage produced **five**
   datasets while the runners were configured for **ten**.
-- the Gutenberg downloader defaulted to `data/raw`, but the combine stage read
-  `gutenberg_ebooks/raw` and `clean_gutenberg_footer.py` read `../gutenberg_ebooks/raw` — three
-  conventions for one directory.
+- the Gutenberg downloader defaulted to `data/raw`, the combine stage read
+  `gutenberg_ebooks/raw`, and a third (since-removed) footer-cleaning helper read
+  `../gutenberg_ebooks/raw` — three conventions for one directory.
 
 All three are now resolved: one canonical directory, ten targets restored, and a single documented
 local location per corpus.

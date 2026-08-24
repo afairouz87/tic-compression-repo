@@ -37,6 +37,7 @@ tables and figures.
 | **Environment tooling** | `install_dependencies.sh`, `check_environment.py`, `requirements.txt`, `dependencies.py` |
 | **Smoke test** | `smoke_test.py` — functional correctness on a tiny synthetic input |
 | **Plotting** | `plot_parallel_results.py`, `plot_parallel_subset.py` |
+| **Diagnostics** | `debug_pic_tic.py` (compare TIC vs PIC on one file), `check_longest_line.py` |
 | **Documentation** | `docs/` and `README_benchmark_verification.md` |
 
 ---
@@ -313,6 +314,9 @@ python3 run_parallel_benchmarks.py --input datasets/f10.txt --sha256
 A substitute input reproduces the **functionality and the thread-scaling behaviour**, but **not the
 exact historical absolute values**. The runner labels the input accordingly at run time. Record the
 path, byte size and SHA-256 it prints alongside any numbers you report.
+
+`check_longest_line.py --input <file>` reports the longest line of a candidate input. TIC divides
+work between threads **by line**, so this is worth checking on any substitute you supply.
 
 Details: **[docs/datasets.md](docs/datasets.md)** (section 7)
 

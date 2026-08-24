@@ -20,6 +20,13 @@ Classification of every tracked file for the public TIC artifact release.
 > The artifact no longer downloads or crawls anything; source corpora are external inputs supplied
 > locally. `requests`, `beautifulsoup4`, `lxml` and `ebooklib` were dropped with them.
 >
+> **Fourth round executed — 2026-08-24.** Remaining development-only files removed: `run.py`,
+> `measureTime.py`, `compression_parallel_debug.py`, `run_search.py.bk`, `.vscode/settings.json`,
+> `run_search_v1.py` and `clean_gutenberg_footer.py` (superseded by `clean_gutenberg_texts.py`,
+> which strips both header and footer; the removed helper rewrote the reviewer's corpus in place
+> from a hardcoded out-of-repo path). `debug_pic_tic.py` and `check_longest_line.py` are **KEPT**
+> as reviewer diagnostics.
+>
 > **`dict.txt` is KEPT** by decision of the author (see `docs/dictionary.md`).
 >
 > Everything else in this document remains a **proposal**. Every remaining removal requires explicit
