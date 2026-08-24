@@ -24,6 +24,13 @@ nothing.
 > root, and the whole `results/` tree is git-ignored. Binaries are built locally with `make`.
 > Findings below are retained verbatim as dated evidence; their exact pre-removal state is preserved
 > at the Git tag `pre-artifact-cleanup`. See `docs/cleanup_manifest.md`.
+>
+> **Licensing resolved — 2026-08-24.** The repository is now licensed under the **Apache License,
+> Version 2.0** (`LICENSE`), `Copyright 2026 Abbas A. Fairouz and contributors`. Findings below that
+> describe the artifact as unlicensed — notably §16 and blocking item 2 in §18 — record the state at
+> the 2026-08-20 inspection and are retained verbatim as dated evidence; they no longer describe the
+> repository. The third-party questions they raise (`dict.txt`, the corpora) are **unaffected** and
+> remain open; see `docs/licensing.md`.
 
 ---
 
@@ -395,13 +402,18 @@ config file. Changing the dataset location means editing four runners by hand.
 
 ## 16. Missing licenses
 
-**There is no `LICENSE` file, no `COPYING`, and no `NOTICE`.** Verified by directory listing.
-No SPDX identifier or copyright header appears in any `.cpp`, `.h`, `.py`, or `.md` file.
+> **RESOLVED 2026-08-24 — `LICENSE` (Apache-2.0) has since been added. The finding below records
+> the state at the 2026-08-20 inspection.**
 
-This is a **hard blocker for artifact evaluation**: with no license, the repository is "all rights
-reserved" by default, and reviewers have no explicit permission to run, modify, or redistribute it.
-The *Available* badge cannot be awarded, and the code is currently non-reusable in the legal sense
-despite being on a public-facing remote.
+**There was no `LICENSE` file, no `COPYING`, and no `NOTICE`.** Verified by directory listing.
+No SPDX identifier or copyright header appeared in any `.cpp`, `.h`, `.py`, or `.md` file.
+
+This was a **hard blocker for artifact evaluation**: with no license, a repository is "all rights
+reserved" by default, and reviewers had no explicit permission to run, modify, or redistribute it.
+That blocker is now cleared for the project's own code. The three licensing questions this finding
+raised are addressed as follows: (1) the authors' code — **Apache-2.0**; (2) `dict.txt` and its
+upstream frequency dataset — **still unresolved**; (3) the corpora — **not redistributed**. See
+`docs/licensing.md`.
 
 Three separate licensing questions are open, and only the first is about the authors' own code:
 

@@ -391,11 +391,23 @@ alongside any results you publish.
 
 ## License
 
-No license file is present yet. **Licensing will be finalized before public release.** Until then no
-permission to use, modify or redistribute this code is granted or implied.
+```
+Copyright 2026 Abbas A. Fairouz and contributors
+```
 
-Note that `dict.txt` derives from a third-party dataset whose terms are unresolved; see
-[docs/licensing.md](docs/licensing.md).
+The project-authored TIC artifact — its source code, scripts and documentation — is licensed under
+the **Apache License, Version 2.0**. See [LICENSE](LICENSE) for the full text.
+
+**This licence covers only the project's own work.** It does **not** extend to:
+
+- the benchmark corpora (Standard Ebooks, Project Gutenberg), which are external inputs this
+  repository neither redistributes nor downloads;
+- `dict.txt`, which derives from a third-party word-frequency dataset;
+- system dependencies and external tools (`gzip`, `bzip2`, `lz4`, `lbzip2`, `grep`) and Python
+  packages, which are invoked or installed but not redistributed here.
+
+Each of those retains its own rights and licensing status. See
+[docs/licensing.md](docs/licensing.md) for the provenance analysis and third-party details.
 
 ---
 

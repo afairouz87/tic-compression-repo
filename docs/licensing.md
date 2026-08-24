@@ -9,7 +9,18 @@ was modified.
 > upstream sources publicly state. Where terms could not be established from an authoritative source,
 > that is recorded as unresolved rather than guessed. Final decisions are the author's.
 
-**Status: the repository has no license and is therefore not yet suitable for public release.**
+**Status — resolved 2026-08-24.**
+
+| | |
+|---|---|
+| **Repository license** | **Apache License, Version 2.0** — full text in [`LICENSE`](../LICENSE) |
+| **Copyright** | `Copyright 2026 Abbas A. Fairouz and contributors` |
+| **Scope** | The project-authored TIC artifact: source code, scripts and documentation |
+| **Not covered** | Third-party materials — the benchmark corpora, `dict.txt` and its upstream frequency dataset, external CLI tools and Python packages — which retain their own respective rights and licensing status |
+
+The licence choice closes the blocker recorded throughout this document. The **third-party questions
+below remain open and are unaffected by it**: licensing the project's own work does not resolve the
+status of `dict.txt` (§3) or the corpora (§4).
 
 > **Status update — 2026-08-23.** Four directories discussed below have since been **removed from
 > the release artifact**: `search_outputs/`, `debug_pic_tic_outputs/`, `old_versions/` and
@@ -32,9 +43,9 @@ was modified.
 
 ---
 
-## 1. Existing project license: none
+## 1. Existing project license: none (historical finding, now resolved)
 
-**No license has ever existed in this repository.** Verified by:
+**No license existed in this repository before 2026-08-24.** Verified at the time by:
 
 | Search | Result |
 |---|---|
@@ -49,10 +60,13 @@ Incidental matches were checked and excluded: dictionary entries in `dict.txt` (
 `gpl`), `"copyright-page"` as an EPUB section name the download scripts strip, BSD/GNU tool names in
 `dependencies.py`, and the word "license" occurring inside committed corpus text.
 
-**Consequence.** Under the Berne Convention a work with no licence is "all rights reserved" by
-default. Reviewers therefore have **no explicit permission to run, copy, modify or redistribute this
-artifact**, even though it is on a public remote. This blocks artifact evaluation and is the single
-highest-priority item in this document.
+**Consequence at the time.** Under the Berne Convention a work with no licence is "all rights
+reserved" by default, so reviewers had no explicit permission to run, copy, modify or redistribute
+the artifact. That was the single highest-priority blocker in this document.
+
+**Resolved 2026-08-24:** a top-level `LICENSE` containing the unmodified Apache License 2.0 was
+added, and the copyright is stated as `Copyright 2026 Abbas A. Fairouz and contributors`. The
+investigation above is retained as the record of what was searched and found.
 
 ---
 
@@ -117,8 +131,12 @@ conventional and entirely defensible choice.
 **BSD-3-Clause is not recommended here** — it carries MIT's patent silence *plus* an extra clause,
 without a corresponding benefit for this artifact.
 
-**This is a decision for the author, and it may require institutional input** (universities often
-have IP policy governing licence choice for research output). **No `LICENSE` file has been created.**
+**Decision taken 2026-08-24: Apache-2.0.** The express patent grant (§3 of the licence) was the
+deciding factor for a novel compression scheme. A top-level `LICENSE` now carries the complete,
+unmodified Apache License 2.0 text (11,358 bytes, SHA-256
+`cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`, retrieved from
+`https://www.apache.org/licenses/LICENSE-2.0.txt`). The comparison above is retained as the record
+of the options that were weighed.
 
 Sources: [MIT (SPDX)](https://spdx.org/licenses/MIT.html) ·
 [BSD-3-Clause (SPDX)](https://spdx.org/licenses/BSD-3-Clause.html) ·
@@ -284,11 +302,11 @@ No copyright or licence notice was removed by this review — there were none to
 
 | Component | Source | Current location | License | Redistribution allowed? | Attribution required? | Recommended artifact treatment |
 |---|---|---|---|---|---|---|
-| **TIC source** | Project-authored (A. A. Fairouz) | `epic-v3.1.cpp`, `epic-v3.1.h` | **None yet** — author's to choose | Author's decision | Per chosen licence | **Retain.** Add top-level `LICENSE` (§2) |
-| **PIC source** | Project-authored | `pic-v3.1.cpp`, `pic-v3.1.h` | **None yet** | Author's decision | Per chosen licence | **Retain** under the same licence |
-| **Superseded C++** | Project-authored | `old_versions/` | **None yet** | Author's decision | Per chosen licence | **Retain** (covered by the same licence) |
-| **Python scripts** (runners, pipeline, tooling) | Project-authored | repo root | **None yet** | Author's decision | Per chosen licence | **Retain** under the same licence |
-| **Build files / docs** | Project-authored | `Makefile`, `docs/`, `README*.md` | **None yet** | Author's decision | Per chosen licence | **Retain** |
+| **TIC source** | Project-authored (A. A. Fairouz) | `epic-v3.1.cpp`, `epic-v3.1.h` | **Apache-2.0** | Yes | Yes — retain notices, state changes | **Retained.** Covered by top-level `LICENSE` |
+| **PIC source** | Project-authored | `pic-v3.1.cpp`, `pic-v3.1.h` | **Apache-2.0** | Yes | Yes | **Retained** under the same licence |
+| **Superseded C++** | Project-authored | `old_versions/` — **removed 2026-08-23** | **Apache-2.0** (as project-authored work) | Yes | Yes | **Removed** from the artifact; preserved at `pre-artifact-cleanup` |
+| **Python scripts** (runners, pipeline, tooling) | Project-authored | repo root | **Apache-2.0** | Yes | Yes | **Retained** under the same licence |
+| **Build files / docs** | Project-authored | `Makefile`, `docs/`, `README*.md` | **Apache-2.0** | Yes | Yes | **Retained** |
 | **`dict.txt`** | Derived from the Kaggle word-frequency CSV (proven, §3.1) | `dict.txt` (2.7 MB) | **Unresolved — License could not be reliably established** | **Unknown** | Unknown | **Replace with acquisition script + SHA-256**, or obtain permission (§3.4) |
 | **`unigram_freq_bk.csv`** | Kaggle "English Word Frequency", owner Rachael Tatman; ← Norvig ← Google Web Trillion Word Corpus / LDC2006T13 | `backup_versions/` (4.8 MB) | **Unresolved — License could not be reliably established** | **Unknown**; root corpus is LDC licence-gated | Unknown | **Exclude from the public artifact** (also redundant) |
 | **Project Gutenberg inputs** | gutenberg.org | Not in repo (git-ignored) | US public domain; PG grants free redistribution | Yes, for US-PD works; jurisdiction-dependent | No (trademark conditions only if trading on the PG name) | **Require reviewer to obtain separately** via `prepare_datasets.py fetch` |
@@ -296,7 +314,7 @@ No copyright or licence notice was removed by this review — there were none to
 | **Generated `f1`–`f10`** | Derived from both corpora | Not in repo (git-ignored) | Inherits corpus status | Mixed / unrecorded per work | No | **Exclude**; rebuild via `prepare_datasets.py` |
 | **`file-parallel.txt`** | **Provenance unknown** (`docs/datasets.md` §7) | Not in repo | **Unresolved** | Unknown | Unknown | **Exclude**; reviewer supplies via `--input` |
 | **Committed corpus text** | Unrecorded; identifiable as *The Blue Castle* (1926) | `search_outputs/` (~865 KB), `debug_pic_tic_outputs/` | Likely US PD, **not verifiable from the repository** | Probably, but unverified | No | **Exclude from the public artifact** (§4) |
-| **`.vscode/settings.json`** | Project-authored editor config | `.vscode/` | **None yet** | n/a | No | **Exclude** (personal config; already a deletion candidate) |
+| **`.vscode/settings.json`** | Project-authored editor config | `.vscode/` — **removed 2026-08-24** | n/a | n/a | No | **Removed** from the artifact |
 | **External CLI tools** (`gzip`, `bzip2`, `lz4`, `lbzip2`, `grep`) | System packages | Not bundled — invoked only | Their own licences | n/a — **not redistributed** | No | **Retain as dependencies**; installed by `install_dependencies.sh` |
 | **Python packages** (pandas, psutil, …) | PyPI | Not bundled — `requirements.txt` only | Their own licences | n/a — **not redistributed** | No | **Retain as dependencies** |
 
