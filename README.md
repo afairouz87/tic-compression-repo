@@ -1,6 +1,6 @@
 # TIC — Generalized Plain-Text Incremental Compression
 
-[![Artifact CI (Ubuntu / GCC)](https://github.com/afairouz87/tic-compression-repo/actions/workflows/ci.yml/badge.svg?branch=claude%2Frepository-cleanup)](https://github.com/afairouz87/tic-compression-repo/actions/workflows/ci.yml?query=branch%3Aclaude%2Frepository-cleanup)
+[![Artifact CI (Ubuntu / GCC)](https://github.com/afairouz87/tic-compression-repo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/afairouz87/tic-compression-repo/actions/workflows/ci.yml?query=branch%3Amain)
 
 Research artifact accompanying the TIC paper.
 
