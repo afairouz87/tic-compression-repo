@@ -41,7 +41,8 @@ Run everything **from the repository root**: the compiled binaries resolve
 | Platform | Status |
 |---|---|
 | macOS (Apple clang / libc++), arm64 | **Verified.** Build, round trip, lookup and lookup-and-replace all pass |
-| Ubuntu/Debian Linux (GCC / libstdc++), x86-64 | **Supported but untested here.** No GCC was available on the machine used to prepare this; the known libstdc++ hazard has been removed (§6), but the build has not been executed against libstdc++ |
+| Ubuntu 24.04 (GCC 13.3.0 / libstdc++), x86-64 | **Validated by CI.** Build, environment check and the smoke test with both dictionaries all pass; see §7 |
+| Other Linux distributions | Expected to work — the libstdc++ hazard was removed (§6) — but not covered by CI |
 | Other Linux distributions | Should work; `install_dependencies.sh` only automates apt, and exits 2 with a manual package list elsewhere |
 | Windows | Not supported |
 
@@ -223,13 +224,32 @@ the pipeline requires a pre-existing CSV.
 make warnings          # or: g++ -std=c++17 -Wall -Wextra -fsyntax-only epic-v3.1.cpp
 ```
 
-**This artifact does not compile warning-free, and does not claim to.** With
-`-std=c++17 -Wall -Wextra`:
+**This artifact does not compile warning-free, and does not claim to.** Warning counts are
+**compiler-specific** — the two toolchains diagnose overlapping but different subsets, so a single
+number would be misleading. Observed with `-std=c++17 -Wall -Wextra`:
 
-| File | Warnings |
-|---|---|
-| `epic-v3.1.cpp` | **10** (was 11) |
-| `pic-v3.1.cpp` | **4** (was 5) |
+| File | Apple clang (macOS/arm64) | GCC 13.3.0 (Ubuntu 24.04) |
+|---|---|---|
+| `epic-v3.1.cpp` | **10** (was 11) | **7** |
+| `pic-v3.1.cpp` | **4** (was 5) | **4** |
+
+These are the counts observed on the toolchains actually used; **other compilers, and other versions
+of these compilers, will report different numbers.** GCC reports fewer warnings here than clang, not
+more. The per-warning table below enumerates the clang set; the GCC set is a subset of it in
+`epic-v3.1.cpp` and identical in `pic-v3.1.cpp`. `make warnings` prints whichever applies to your
+toolchain, and CI publishes the GCC output to the workflow run summary.
+
+### Validated on Ubuntu 24.04 / GCC 13.3.0 / libstdc++
+
+Confirmed by the CI workflow (`.github/workflows/ci.yml`), not asserted:
+
+- `make clean && make` succeeds; both binaries are produced as ELF 64-bit x86-64 executables
+- `python3 check_environment.py` reports **all required checks passed**
+- `python3 smoke_test.py` passes **11/11** with the synthetic dictionary, and **11/11** again with
+  the committed `dict.txt`, byte-exact round trips in both cases for TIC and PIC
+
+This exercised the portability fixes below against libstdc++ for the first time; before CI existed
+they were preventive and untested.
 
 ### Fixed
 

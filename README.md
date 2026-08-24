@@ -1,5 +1,7 @@
 # TIC — Generalized Plain-Text Incremental Compression
 
+[![Artifact CI (Ubuntu / GCC)](https://github.com/afairouz87/tic-compression-repo/actions/workflows/ci.yml/badge.svg?branch=claude%2Frepository-cleanup)](https://github.com/afairouz87/tic-compression-repo/actions/workflows/ci.yml?query=branch%3Aclaude%2Frepository-cleanup)
+
 Research artifact accompanying the TIC paper.
 
 ---
@@ -109,12 +111,16 @@ experiment cannot overwrite source files or documentation.
 
 ### Platforms
 
-- **macOS / arm64 — tested.** Build, both round trips, lookup and lookup-and-replace all verified.
-- **Ubuntu / Debian — supported; automatically validated by CI once the workflow is active.** The
-  known portability issues have been addressed (`-pthread`, no reliance on a transitive
-  `<filesystem>` include, overridable `CXX`). GCC/libstdc++ was not available on the machine used to
-  prepare this artifact, so Linux validation is delegated to CI.
-- Windows is not supported.
+The artifact has been successfully validated on both of the following:
+
+| Platform | Toolchain | Status |
+|---|---|---|
+| **macOS / Apple Silicon (arm64)** | Apple clang, libc++ | **Validated** — build, both round trips, lookup and lookup-and-replace |
+| **Ubuntu 24.04 / x86-64** | GCC 13.3.0, libstdc++ | **Validated by CI** — build, environment check, and the smoke test with both dictionaries |
+
+Other Linux distributions are expected to work — the portability issues were addressed (`-pthread`,
+no reliance on a transitive `<filesystem>` include, overridable `CXX`) — but only Ubuntu 24.04 is
+actually validated. Windows is not supported.
 
 ### Continuous integration
 
@@ -125,9 +131,11 @@ dictionary and once with the committed `dict.txt` — and reports the GCC warnin
 failing on it. It does **not** run the benchmark suite, which needs corpus data that is not
 committed.
 
-The workflow has not yet been executed on GitHub, so no Linux/GCC result is claimed here. Its
-commands were validated locally on macOS/Apple clang; the GCC-specific behaviour is verified by the
-first CI run.
+The workflow runs green on `claude/repository-cleanup`. The first run built both binaries as ELF
+x86-64 executables under **GCC 13.3.0**, `check_environment.py` reported all required checks passed,
+and the smoke test passed **11/11 twice** — once with the synthetic dictionary and once with the
+committed `dict.txt` — with byte-exact round trips for TIC and PIC. The badge above reflects the
+current status; click it for the full run history.
 
 macOS ships BSD `gzip`/`bzip2`/`grep` while Linux ships the GNU versions, so **timings are not
 directly comparable across the two platforms**.
@@ -378,7 +386,8 @@ Stated plainly, because they affect how results should be interpreted:
 2. **`file-parallel.txt` cannot be reconstructed** — provenance unknown.
 3. **A different dictionary changes the output.** Compression is dictionary-dependent; only the
    included `dict.txt` reproduces the published numbers.
-4. **Linux has not been fully validated** on the development machine used to prepare this artifact.
+4. **Only Ubuntu 24.04 and macOS/arm64 are validated.** Other Linux distributions are expected to
+   work but are not covered by CI.
 5. **Absolute timings are machine- and platform-specific.** Results were produced on macOS/arm64;
    BSD versus GNU tool implementations differ.
 6. **No automated test suite or CI.** `smoke_test.py` is the functional check.
