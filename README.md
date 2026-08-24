@@ -110,11 +110,24 @@ experiment cannot overwrite source files or documentation.
 ### Platforms
 
 - **macOS / arm64 — tested.** Build, both round trips, lookup and lookup-and-replace all verified.
-- **Ubuntu / Debian — supported, not yet fully validated.** The known portability issues have been
-  addressed (`-pthread`, no reliance on transitive `<filesystem>`, overridable `CXX`), but the build
-  has not been executed against GCC/libstdc++ on the development machine used to prepare this
-  artifact.
+- **Ubuntu / Debian — supported; automatically validated by CI once the workflow is active.** The
+  known portability issues have been addressed (`-pthread`, no reliance on a transitive
+  `<filesystem>` include, overridable `CXX`). GCC/libstdc++ was not available on the machine used to
+  prepare this artifact, so Linux validation is delegated to CI.
 - Windows is not supported.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` builds and validates the artifact on **Ubuntu 24.04 with GCC/libstdc++**
+on every push and pull request. It installs dependencies through `install_dependencies.sh`, runs
+`make clean && make`, `check_environment.py`, and the smoke test twice — once with the synthetic
+dictionary and once with the committed `dict.txt` — and reports the GCC warning audit without
+failing on it. It does **not** run the benchmark suite, which needs corpus data that is not
+committed.
+
+The workflow has not yet been executed on GitHub, so no Linux/GCC result is claimed here. Its
+commands were validated locally on macOS/Apple clang; the GCC-specific behaviour is verified by the
+first CI run.
 
 macOS ships BSD `gzip`/`bzip2`/`grep` while Linux ships the GNU versions, so **timings are not
 directly comparable across the two platforms**.

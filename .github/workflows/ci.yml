@@ -1,0 +1,122 @@
+name: Artifact CI (Ubuntu / GCC)
+
+# Validates that the TIC artifact builds and functions on Ubuntu with
+# GCC/libstdc++. The published results were produced on macOS/arm64, so this
+# workflow exists to catch Linux-specific build and portability regressions.
+#
+# It does NOT run the benchmark suite: that needs ~3.3 GB of corpus data that is
+# deliberately not committed. This is build + functional validation only.
+
+on:
+  push:
+  pull_request:
+
+# A newer push to the same ref supersedes an in-flight run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-validate:
+    name: Build and validate on Ubuntu (GCC)
+    # Pinned rather than ubuntu-latest so the artifact's validation environment
+    # does not change underneath it without a visible commit.
+    runs-on: ubuntu-24.04
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Uses the artifact's own installer, so CI exercises the same path a
+      # reviewer follows. --no-verify skips its trailing check_environment.py
+      # call, which would fail here because the binaries are not built yet;
+      # the checker runs as its own step after the build instead.
+      - name: Install dependencies
+        run: ./install_dependencies.sh --no-verify
+
+      - name: Report toolchain
+        run: |
+          echo "g++     : $(g++ --version | head -1)"
+          echo "make    : $(make --version | head -1)"
+          echo "python3 : $(python3 --version)"
+          for t in gzip bzip2 lz4 lbzip2 grep zgrep bzgrep; do
+            printf '%-8s: %s\n' "$t" "$(command -v "$t" || echo MISSING)"
+          done
+
+      - name: Build TIC and PIC
+        run: |
+          make clean
+          make
+
+      - name: Verify both binaries were produced
+        run: |
+          set -euo pipefail
+          for b in epic-v3.1 pic-v3.1; do
+            test -x "$b" || { echo "::error::$b was not built"; exit 1; }
+            echo "$b: $(file -b "$b" 2>/dev/null || echo "type unknown (file(1) unavailable)")"
+          done
+
+      - name: Validate the environment
+        run: python3 check_environment.py
+
+      # Default run: the smoke test supplies its own synthetic dictionary, so
+      # this also proves the artifact is functional without the committed one.
+      - name: Functional smoke test (synthetic dictionary)
+        run: python3 smoke_test.py --no-build
+
+      # Second run against the committed dict.txt. Nothing is downloaded and no
+      # substitute dictionary is used.
+      - name: Functional smoke test (committed dict.txt)
+        run: python3 smoke_test.py --no-build --historical-dict
+
+      # Informational. The artifact does not compile warning-free and does not
+      # claim to; see docs/environment.md section 7. This surfaces any
+      # additional warnings that GCC/libstdc++ reports but Apple clang does not.
+      # It must not fail the build: no algorithmic change is made to silence
+      # warnings, and the Makefile does not use -Werror.
+      - name: Warning audit (informational, never fails)
+        continue-on-error: true
+        run: |
+          set +e
+          {
+            echo '## GCC warning audit (`-std=c++17 -Wall -Wextra -pthread`)'
+            echo
+            for src in epic-v3.1.cpp pic-v3.1.cpp; do
+              out=$(g++ -std=c++17 -Wall -Wextra -pthread -fsyntax-only "$src" 2>&1)
+              count=$(printf '%s\n' "$out" | grep -c 'warning:')
+              echo "### $src — $count warning(s)"
+              echo '```'
+              printf '%s\n' "$out"
+              echo '```'
+              echo
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Nothing CI produces may become tracked content: binaries, __pycache__
+      # and results/ are all git-ignored, and the smoke test works in a
+      # temporary directory outside the repository.
+      - name: Verify the repository is left clean
+        run: |
+          set -euo pipefail
+          status=$(git status --porcelain)
+          if [ -n "$status" ]; then
+            echo "::error::CI modified tracked content:"
+            echo "$status"
+            exit 1
+          fi
+          echo "Working tree clean; all generated output is ignored."
+
+      - name: Clean build artifacts
+        if: always()
+        run: make clean
