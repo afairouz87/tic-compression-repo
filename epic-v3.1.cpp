@@ -70,6 +70,10 @@ Byte-n: last ASCII byte code
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
 // unordered_map<uint32_t, string> dictMapCode; // Decompression Hash Table (UNUSED)
 string *dictMapCodeArray = nullptr; // Decompression Consecutive Array of rank of codeWords
+size_t dictMapCodeArraySize = 0;    // allocated length of dictMapCodeArray (bounds checking)
+
+// Forward declaration: emits a token as one or more legal T_S frames (<=255 B each).
+static void EMIT_SPECIAL_FRAMES(vector<uint8_t> &out, const string &word);
 
 // File path of the CSV file
 // string dictFilename = "unigram_freq.csv";
@@ -222,6 +226,7 @@ int main(int argc, char *argv[])
     // cout << "Number of lines in the dictionary file: " << numberOfWords << endl;
 
     dictMapCodeArray = new string[numberOfWords + 10]; // add an extra spaces
+    dictMapCodeArraySize = static_cast<size_t>(numberOfWords + 10);
 
     // **** TESTs ****
     // int TMP_NUM = ONE_BYTE_BOUND-1;
@@ -1523,18 +1528,16 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet)
             if (serial == 0)
             { // NOT FOUND in the hash table - SPECIAL codeWord
                 // Call a function to generate a special codeWord
-                byteCodes = SPECIAL_CODE_WORD_GENERATOR(word);
-                lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)); // next special codeWord
+                // Split payloads longer than 255 bytes into consecutive legal
+                // T_S frames; identical output for payloads <= 255 bytes.
+                EMIT_SPECIAL_FRAMES(lineCodeWords, word);
 
-                // increment the special code word counter
+                // increment the special code word counter (once per TOKEN, as before)
                 specialCodeWordCounter++;
 
                 // for debug ..
                 // cout << "special code: " << word << endl;
 
-                // Push the byteCodes to the lineCodeWords vector
-                lineCodeWords.insert(lineCodeWords.end(), byteCodes.begin(), byteCodes.end());
-                lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(END_SPECIAL_CODE)); // end special codeWord
                 byteCodes.clear();
             }
             else
@@ -1634,18 +1637,16 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
             if (serial == 0)
             { // NOT FOUND in the hash table - SPECIAL codeWord
                 // Call a function to generate a special codeWord
-                byteCodes = SPECIAL_CODE_WORD_GENERATOR(word);
-                lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE)); // next special codeWord
+                // Split payloads longer than 255 bytes into consecutive legal
+                // T_S frames; identical output for payloads <= 255 bytes.
+                EMIT_SPECIAL_FRAMES(lineCodeWords, word);
 
-                // increment the special code word counter
+                // increment the special code word counter (once per TOKEN, as before)
                 specialCodeWordCounter++;
 
                 // for debug ..
                 // cout << "special code: " << word << endl;
 
-                // Push the byteCodes to the lineCodeWords vector
-                lineCodeWords.insert(lineCodeWords.end(), byteCodes.begin(), byteCodes.end());
-                lineCodeWords.push_back(Shift_Left_with_Zero_Inserted(END_SPECIAL_CODE)); // end special codeWord
                 byteCodes.clear();
             }
             else
@@ -1766,6 +1767,15 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
 
             if (nextByte == 0)
             {
+                // GUARD: a valid codeword never uses more than 3 groups. A longer
+                // run means the stream is malformed; shifting by 7*count would be
+                // undefined behaviour for count >= 10.
+                if (count > 2)
+                {
+                    cerr << "Error - D: malformed codeword (continuation run of "
+                         << static_cast<unsigned>(count) + 1 << " bytes)" << endl;
+                    inFile.close(); outFile.close(); return 2;
+                }
                 finalSerial = static_cast<uint64_t>(concatenateBytes(finalSerial, byte, count));
 
                 if (count == 1)
@@ -1792,10 +1802,40 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
                     string word = SPECIAL_CODE_WORD_READER(buffer.data(), i, bytesRead);
 
                     if (word.empty()) {
-                        // i = start_i;
+                        // The reader fails when the T_S frame runs past the end of
+                        // this buffer. Recoverable ONLY if more of the file remains;
+                        // otherwise the frame is genuinely truncated. Guards also
+                        // prevent the size_t wrap of "start_i - 1" and the
+                        // no-progress loop that re-reads the same buffer forever.
+                        if (currentPos + static_cast<streamoff>(bytesRead) >= end)
+                        {
+                            cerr << "Error - D: truncated T_S frame at end of stream" << endl;
+                            inFile.close(); outFile.close(); return 5;
+                        }
+                        if (start_i == 0)
+                        {
+                            cerr << "Error - D: T_S frame exceeds the read buffer" << endl;
+                            inFile.close(); outFile.close(); return 6;
+                        }
                         i = start_i - 1;
                         currentPos--;
                         break;
+                    }
+
+                    // GUARD: the payload must be followed by END_SPECIAL. After the
+                    // reader, i indexes the LAST PAYLOAD byte, so the terminator is
+                    // at i + 1.
+                    // Validate ONLY when the terminator lies inside this buffer.
+                    // A frame whose END_SPECIAL falls exactly past the buffer edge
+                    // is legitimate: the original flow lets the loop exit and the
+                    // next refill consume it. Checking it here would reject valid
+                    // streams.
+                    if (i + 1 < bytesRead &&
+                        static_cast<uint8_t>(buffer[i + 1]) !=
+                            Shift_Left_with_Zero_Inserted(END_SPECIAL_CODE))
+                    {
+                        cerr << "Error - D: T_S frame not terminated by END_SPECIAL" << endl;
+                        inFile.close(); outFile.close(); return 3;
                     }
 
                     outFile << word;
@@ -1807,6 +1847,13 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
                 }
                 else
                 {
+                    // GUARD: reconstructed rank must be inside the decode array.
+                    if (finalSerial >= dictMapCodeArraySize)
+                    {
+                        cerr << "Error - D: dictionary rank " << finalSerial
+                             << " out of range (max " << dictMapCodeArraySize - 1 << ")" << endl;
+                        inFile.close(); outFile.close(); return 4;
+                    }
                     word = dictMapCodeArray[finalSerial];
                     if (NEXT_CAP)
                     {
@@ -1822,6 +1869,12 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
             }
             else
             {
+                // GUARD: bound the continuation run before the next shift.
+                if (count > 2)
+                {
+                    cerr << "Error - D: malformed codeword (oversized continuation)" << endl;
+                    inFile.close(); outFile.close(); return 2;
+                }
                 finalSerial = concatenateBytes(finalSerial, byte, count);
                 count++;
                 ++i;
@@ -1945,6 +1998,29 @@ string SPECIAL_CODE_WORD_READER_BYTES(vector<uint8_t> bytes)
 Generate
 */
 // vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(const string &input) {
+
+// Emit one token as ONE OR MORE legal T_S frames, each carrying at most 255
+// payload bytes.  The T_S length field is a single byte and therefore cannot
+// express a longer payload; the previous code assigned the length to a uint8_t,
+// which silently truncated it (length & 0xFF) while still writing the whole
+// payload, producing a stream no conforming decoder can parse.  Splitting keeps
+// the on-disk format unchanged: consecutive T_S frames concatenate naturally on
+// decode.  For payloads <= 255 bytes this emits exactly the previous bytes.
+static void EMIT_SPECIAL_FRAMES(vector<uint8_t> &out, const string &word)
+{
+    const size_t MAX_TS_PAYLOAD = 255;
+    size_t off = 0;
+    do
+    {
+        const size_t n = min(MAX_TS_PAYLOAD, word.size() - off);
+        out.push_back(Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE));
+        vector<uint8_t> frame = SPECIAL_CODE_WORD_GENERATOR(word.substr(off, n));
+        out.insert(out.end(), frame.begin(), frame.end());
+        out.push_back(Shift_Left_with_Zero_Inserted(END_SPECIAL_CODE));
+        off += n;
+    } while (off < word.size());
+}
+
 vector<uint8_t> SPECIAL_CODE_WORD_GENERATOR(string input)
 {
     vector<uint8_t> result;
