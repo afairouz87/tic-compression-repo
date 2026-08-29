@@ -65,6 +65,7 @@ Byte-n: last ASCII byte code
 
 
 #include "epic-v3.1.h"
+#include <unistd.h>   // getpid() for unique temporary file names (D-14)
 
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
@@ -103,6 +104,7 @@ int decodedLineCounter = 0;
 uint64_t T1_FREQ = 0, T2_FREQ = 0, T3_FREQ = 0, T4_FREQ = 0;
 
 const uint8_t SPACE_BYTE       = Shift_Left_with_Zero_Inserted(SPACE_CODE);
+const uint8_t NEXT_SPECIAL_BYTE_D14 = Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE);
 const uint8_t NEWLINE_BYTE     = Shift_Left_with_Zero_Inserted(NEW_LINE_CODE);
 const uint8_t END_SPECIAL_BYTE = Shift_Left_with_Zero_Inserted(END_SPECIAL_CODE);
 
@@ -1700,7 +1702,10 @@ vector<uint8_t> convertSearchStringToCodeWord(vector<string> wordsSet)
 uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, streampos end, const string &outputFileNameText)
 {
     ifstream inFile(inputFileNameBin, ios::binary);
-    ofstream outFile(outputFileNameText, ios::app);
+    // D-14: was ios::app. Each worker owns exactly one temporary file, so append
+    // mode gained nothing and was a hazard: a temp file left behind by a crashed
+    // run would be appended to rather than replaced, silently duplicating text.
+    ofstream outFile(outputFileNameText, ios::out | ios::trunc | ios::binary);
     if (!inFile || !outFile)
     {
         cerr << "Error - D: opening files for decompression." << endl;
@@ -3007,6 +3012,156 @@ void mergeTextFiles(const vector<string> &tempFiles, const string &outputFile)
 // Function to split a binary file into chunks and process them
 
 // Version 1
+// ---------------------------------------------------------------------------
+// D-14: certified restart-atomic split points for multi-threaded decompression.
+//
+// A raw byte value is NEVER evidence that a split point is safe. The previous
+// heuristic scanned for bytes matching (c & 0xFE) == 0x00 || (c & 0xFE) == 0x02,
+// which accepts 0x00-0x03; 0x01 and 0x03 are continuation bytes (always strictly
+// inside a codeword), while 0x00/0x02 also occur as terminal bytes of valid
+// T2/T3 codewords and as T_S length bytes. That silently corrupted valid data.
+//
+// An offset is a valid restart point only when BOTH hold:
+//   1. it is the first byte of a LOGICAL TIC token, and
+//   2. the decoder has no pending NEXT_CAPITAL state there.
+//
+// Pending-capital semantics, verified by crafted-stream decodes:
+//   CAP + dictionary word -> capital consumed
+//   CAP + T_S             -> capital consumed/discarded
+//   CAP + SPACE           -> NOT cleared
+//   CAP + NEWLINE         -> NOT cleared
+//
+// A multi-frame T_S sequence produced by the post-T42 encoder is ONE logical
+// token; no checkpoint may fall inside it. Merging consecutive frames errs on
+// the safe side: at worst it skips a candidate, never admits an unsafe one.
+//
+// The .tic payload is only read here, never modified.
+// ---------------------------------------------------------------------------
+const uint64_t D14_CHECKPOINT_SPACING = 64ull * 1024ull; // target, not a guarantee
+
+static bool buildSafeRestartOffsets(const string &inputFile,
+                                    uint64_t targetSpacing,
+                                    vector<uint64_t> &safeOffsets,
+                                    uint64_t &payloadLength)
+{
+    safeOffsets.clear();
+    payloadLength = 0;
+
+    ifstream in(inputFile, ios::binary);
+    if (!in)
+    {
+        cerr << "Error - D14 pre-scan: opening input file: " << inputFile << endl;
+        return false;
+    }
+    in.seekg(0, ios::end);
+    const streamoff sz = in.tellg();
+    if (sz <= 0) return true;                 // empty payload: no checkpoints
+    payloadLength = static_cast<uint64_t>(sz);
+
+    // A single T_S frame is at most 1 (length) + 255 (payload) + 1 (END) bytes,
+    // so no more than a few hundred contiguous bytes are ever needed at once.
+    const size_t BUFSZ = 1u << 20;
+    vector<uint8_t> buf(BUFSZ);
+    uint64_t base = 0;      // absolute offset of buf[0]
+    size_t   have = 0;      // valid bytes in buf
+    size_t   cur  = 0;      // cursor within buf
+
+    auto refill = [&](uint64_t absPos) -> bool
+    {
+        in.clear();
+        in.seekg(static_cast<streamoff>(absPos));
+        in.read(reinterpret_cast<char *>(buf.data()), static_cast<streamsize>(BUFSZ));
+        have = static_cast<size_t>(in.gcount());
+        base = absPos;
+        cur  = 0;
+        return have > 0;
+    };
+    auto need = [&](size_t n) -> bool
+    {
+        if (have - cur >= n) return true;
+        const uint64_t absPos = base + cur;
+        if (absPos >= payloadLength) return false;
+        if (!refill(absPos)) return false;
+        return have - cur >= n;
+    };
+
+    if (!refill(0)) return true;
+
+    bool     pendingCapital = false;
+    uint64_t nextTarget     = 0;   // forces a checkpoint at offset 0
+
+    while (true)
+    {
+        const uint64_t tokenStart = base + cur;
+        if (tokenStart >= payloadLength) break;
+
+        // Emit only at a logical token start with no pending capital, and only
+        // at or after the running target. Spacing is therefore NOT uniform: a
+        // long logical token can delay a checkpoint arbitrarily.
+        if (!pendingCapital && tokenStart >= nextTarget)
+        {
+            safeOffsets.push_back(tokenStart);
+            nextTarget = tokenStart + targetSpacing;   // measured from the ACTUAL
+        }                                              // offset, so drift cannot accumulate
+
+        // ---- one codeword: 7-bit groups, little-endian, LSB = continuation ----
+        uint64_t tmpSerial = 0;
+        int      count     = 0;
+        bool     ok        = true;
+        while (true)
+        {
+            if (!need(1)) { ok = false; break; }
+            const uint8_t b = buf[cur++];
+            tmpSerial |= (static_cast<uint64_t>(b >> 1) << (7 * count));
+            if (b & 1)
+            {
+                if (++count > 2) { ok = false; break; }   // malformed codeword
+            }
+            else break;
+        }
+        if (!ok) break;
+
+        const uint64_t finalSerial =
+            tmpSerial + (count == 0 ? 0
+                       : (count == 1 ? TWO_BYTE_OFFSET : THREE_BYTE_OFFSET));
+
+        if (finalSerial == NEXT_SPECIAL_CODE)
+        {
+            // consume every consecutive frame: together they are ONE logical token
+            while (true)
+            {
+                if (!need(1)) { ok = false; break; }
+                const size_t len = buf[cur++];
+                if (!need(len + 1)) { ok = false; break; }
+                cur += len;
+                if (buf[cur] != END_SPECIAL_BYTE) { ok = false; break; }
+                cur++;
+                if (!need(1)) break;                      // stream ends here
+                if (buf[cur] == NEXT_SPECIAL_BYTE_D14) { cur++; continue; }
+                break;
+            }
+            if (!ok) break;
+            pendingCapital = false;                       // T_S consumes the capital
+        }
+        else if (finalSerial == NEXT_CAPITAL_CODE)
+        {
+            pendingCapital = true;
+        }
+        else if (finalSerial == SPACE_CODE || finalSerial == NEW_LINE_CODE)
+        {
+            // verified: neither clears a pending capital
+        }
+        else
+        {
+            pendingCapital = false;                       // dictionary word consumes it
+        }
+    }
+
+    // A malformed or truncated tail simply ends the scan; every offset already
+    // recorded remains valid, and the final worker still runs to payloadLength.
+    return true;
+}
+
 uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputFile, int numThreads)
 {
     ifstream inFile(inputFile, ios::binary);
@@ -3016,41 +3171,76 @@ uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputF
         return -1;
     }
 
-    inFile.seekg(0, ios::end);
-    streampos fileSize = inFile.tellg();
-    streampos chunkSize = fileSize / numThreads;
+    inFile.close();
+    if (numThreads < 1) numThreads = 1;
+
+    // D-14: certified restart-atomic split points replace the raw-byte heuristic.
+    const auto preScanBegin = steady_clock::now();
+    vector<uint64_t> safeOffsets;
+    uint64_t payloadLength = 0;
+    if (!buildSafeRestartOffsets(inputFile, D14_CHECKPOINT_SPACING, safeOffsets, payloadLength))
+        return -1;
+    const double preScanMs =
+        duration_cast<duration<double, milli>>(steady_clock::now() - preScanBegin).count();
+
+    if (payloadLength == 0)   // empty payload -> empty output, no workers
+    {
+        ofstream emptyOut(outputFile, ios::out | ios::trunc | ios::binary);
+        if (!emptyOut)
+        {
+            cerr << "Error - splitAndProcessBinaryFile: creating output file: " << outputFile << endl;
+            return -1;
+        }
+        return 0;
+    }
+    if (safeOffsets.empty())
+        safeOffsets.push_back(0);   // defensive: offset 0 is always restart-atomic
+
+    // Partition: map each nominal target to the greatest certified checkpoint that
+    // does not exceed it, then deduplicate. Coincident targets collapse, so the
+    // actual worker count W may be < numThreads -- degrade rather than split unsafely.
+    vector<uint64_t> starts;
+    starts.push_back(safeOffsets.front());          // always 0
+    for (int i = 1; i < numThreads; i++)
+    {
+        const uint64_t target =
+            static_cast<uint64_t>((static_cast<unsigned long long>(i) * payloadLength) / numThreads);
+        auto it = upper_bound(safeOffsets.begin(), safeOffsets.end(), target);
+        if (it == safeOffsets.begin()) continue;    // no checkpoint at or before target
+        const uint64_t candidate = *(it - 1);
+        if (candidate > starts.back())
+            starts.push_back(candidate);
+    }
 
     vector<thread> threads;
     vector<string> tempFiles;
-    streampos start, end;
+    const size_t workerCount = starts.size();
 
-    for (int i = 0; i < numThreads; i++)
+    if (const char *verbose = getenv("TIC_D14_VERBOSE"))
     {
-        if (i == 0)
-            start = 0;
-        else
-            start = end;
-        end = (i == numThreads - 1) ? fileSize : streampos(start + chunkSize);
+        if (verbose[0] && verbose[0] != '0')
+            cerr << "[D14] payload=" << payloadLength
+                 << " checkpoints=" << safeOffsets.size()
+                 << " requested_workers=" << numThreads
+                 << " actual_workers=" << workerCount
+                 << " prescan_ms=" << preScanMs << endl;
+    }
 
-        // Adjust end position to the nearest newline (0x02) boundary
-        if (i != numThreads - 1)
-        {
-            ifstream tempFile(inputFile, ios::binary);
-            tempFile.seekg(end);
-            char c;
-            while (tempFile.get(c))
-            {
-                // if (c == 0x02 || c == 0x00)
-                if ((c & 0xFE) == 0x00 || (c & 0xFE) == 0x02)
-                    break; // Stop at newline or space
-            }
-            end = tempFile.tellg();
-            tempFile.close();
-        }
+    // Unique per process: temp files live in the CWD, so two concurrent TIC
+    // processes would otherwise collide on chunk_<i>.txt.
+    const string tempTag = to_string(static_cast<long long>(getpid()));
 
-        string chunkFile = "chunk_" + to_string(i) + ".txt";
+    for (size_t w = 0; w < workerCount; w++)
+    {
+        const uint64_t startOffset = starts[w];
+        const uint64_t endOffset   = (w + 1 < workerCount) ? starts[w + 1] : payloadLength;
+
+        string chunkFile = "chunk_" + tempTag + "_" + to_string(w) + ".txt";
         tempFiles.push_back(chunkFile);
-        threads.emplace_back(Decompression_Function, inputFile, start, end, chunkFile);
+        threads.emplace_back(Decompression_Function, inputFile,
+                             static_cast<streampos>(static_cast<streamoff>(startOffset)),
+                             static_cast<streampos>(static_cast<streamoff>(endOffset)),
+                             chunkFile);
     }
 
     for (auto &t : threads)
