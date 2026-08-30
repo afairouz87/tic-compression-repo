@@ -79,9 +79,6 @@ uint64_t Shift_Right_Seven_Positions(uint64_t number);
 uint8_t Compression_Function(const string& inputFile, streampos start, streampos end, const string& outputFile);
 uint8_t Decompression_Function(const string& inputFileNameBin, streampos start, streampos end, const string& outputFileNameText);
 
-uint64_t Lookup_Function(const string& inputFileNameBin, streampos start, streampos end, 
-    string searchString, int threadIndex, vector<uint64_t>& results);
-
 uint64_t Lookup_and_Replace_Function(const string& inputFileNameBin, streampos start, streampos end, 
     const string& outputFileNameBin, string searchString, string replaceString, int threadIndex, vector<uint64_t>& results);
 
