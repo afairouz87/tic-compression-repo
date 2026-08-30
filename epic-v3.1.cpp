@@ -3258,76 +3258,516 @@ uint8_t splitAndProcessBinaryFile(const string &inputFile, const string &outputF
 
 
 // Version 2 - Search 
-uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string &outputFile, int numThreads, string searchString)
+// ===========================================================================
+// TIC lookup (-l): logical-token KMP matcher with location and line reporting.
+//
+// Replaces the previous matcher, which compared raw compressed BYTES with an
+// unsound reset. That produced three defects:
+//   D2  false negatives  -- a repeated query prefix caused the scan to resync
+//                           mid-token and skip a genuine match start;
+//   D3  false positives  -- matching was not constrained to the logical token
+//                           sequence, so "of How the" matched the query
+//                           "of the";
+//   D4  no locations     -- only an aggregate count was computed.
+// The parallel splitter additionally scanned raw bytes for boundaries, the
+// same class of defect fixed for decompression in D-14.
+//
+// Semantics implemented here (approved specification):
+//   * matching is over LOGICAL tokens, never byte substrings;
+//   * matches are token aligned at both ends, leftmost-first, NON-overlapping
+//     (the automaton resets to state 0 after a reported match);
+//   * T1/T2/T3/T_S/reserved are compared uniformly by token identity;
+//   * a multi-frame T_S sequence is ONE logical token;
+//   * NEXT_CAPITAL is its own logical token, so a lowercase query matches a
+//     capitalised dictionary word (the CAP simply lies outside the match).
+// Lookup is read-only: no .tic byte is written or altered.
+// ===========================================================================
+
+enum TicTokKind : uint8_t { TK_SPACE = 0, TK_NL = 1, TK_CAP = 2, TK_DICT = 3, TK_TS = 4 };
+
+struct TicLogicalToken
 {
-    ifstream inFile(inputFile, ios::binary);
-    if (!inFile)
+    TicTokKind kind = TK_SPACE;
+    uint64_t   serial = 0;   // dictionary rank when kind == TK_DICT
+    string     payload;      // T_S payload (materialised only when needed)
+    uint64_t   cstart = 0;   // compressed offset of the first byte
+    uint64_t   cend   = 0;   // one past the last byte  -> span is [cstart, cend)
+};
+
+static inline bool ticTokenIdentical(const TicLogicalToken &a, const TicLogicalToken &b)
+{
+    if (a.kind != b.kind) return false;
+    if (a.kind == TK_DICT) return a.serial == b.serial;
+    if (a.kind == TK_TS)   return a.payload == b.payload;
+    return true;                       // SPACE / NEWLINE / NEXT_CAPITAL
+}
+
+// --------------------------------------------------------------------------
+// Streaming logical-token reader. Never treats an arbitrary byte as a token
+// start: it follows the LSB continuation discipline and skips T_S frames by
+// their declared length, exactly as the decoder does.
+// --------------------------------------------------------------------------
+class TicTokenReader
+{
+public:
+    bool open(const string &path, uint64_t startOffset, bool wantPayload)
     {
-        cerr << "Error - splitAndProcessBinaryFileForSearch: opening input file: " << inputFile << endl;
-        return -1;
+        needPayload = wantPayload;
+        in.open(path, ios::binary);
+        if (!in) return false;
+        in.seekg(0, ios::end);
+        const streamoff sz = in.tellg();
+        if (sz < 0) return false;
+        fileLen = static_cast<uint64_t>(sz);
+        buf.resize(1u << 20);
+        return refill(startOffset) || startOffset >= fileLen;
+    }
+    uint64_t length() const { return fileLen; }
+
+    bool next(TicLogicalToken &t)
+    {
+        const uint64_t st = base + cur;
+        if (st >= fileLen) return false;
+
+        uint64_t tmp = 0; int cnt = 0;
+        while (true)
+        {
+            if (!need(1)) return false;
+            const uint8_t b = buf[cur++];
+            tmp |= (static_cast<uint64_t>(b >> 1) << (7 * cnt));
+            if (b & 1) { if (++cnt > 2) return false; }
+            else break;
+        }
+        const uint64_t ser =
+            tmp + (cnt == 0 ? 0 : (cnt == 1 ? TWO_BYTE_OFFSET : THREE_BYTE_OFFSET));
+
+        t.serial = 0;
+        t.payload.clear();
+        t.cstart = st;
+
+        if (ser == NEXT_SPECIAL_CODE)
+        {
+            t.kind = TK_TS;
+            // every consecutive frame belongs to ONE logical token
+            while (true)
+            {
+                if (!need(1)) return false;
+                const size_t len = buf[cur++];
+                if (!need(len + 1)) return false;
+                if (needPayload)
+                    t.payload.append(reinterpret_cast<const char *>(&buf[cur]), len);
+                cur += len;
+                if (buf[cur] != END_SPECIAL_BYTE) return false;
+                cur++;
+                // A logical token is split ONLY by the 255-byte frame cap, so a
+                // frame shorter than 255 ENDS it. Two adjacent symbol tokens --
+                // "__" is two 1-byte T_S frames -- must not be merged into one.
+                if (len != 255) break;
+                if (!need(1)) break;
+                if (buf[cur] == NEXT_SPECIAL_BYTE_D14) { cur++; continue; }
+                break;
+            }
+        }
+        else if (ser == SPACE_CODE)        t.kind = TK_SPACE;
+        else if (ser == NEW_LINE_CODE)     t.kind = TK_NL;
+        else if (ser == NEXT_CAPITAL_CODE) t.kind = TK_CAP;
+        else if (ser == END_SPECIAL_CODE)  return false;   // stray terminator
+        else { t.kind = TK_DICT; t.serial = ser; }
+
+        t.cend = base + cur;
+        return true;
     }
 
-    inFile.seekg(0, ios::end);
-    streamoff fileSize = static_cast<streamoff>(inFile.tellg());
-    streamoff chunkSize = fileSize / numThreads;
+private:
+    ifstream in;
+    vector<uint8_t> buf;
+    uint64_t base = 0, fileLen = 0;
+    size_t   have = 0, cur = 0;
+    bool     needPayload = false;
 
-    vector<thread> threads;
-    streampos start = 0, end = 0;
-
-    vector<streampos> adjustedEnds(numThreads);
-    vector<uint64_t> countMatchVector(numThreads, 0);
-
-    // First pass: calculate adjusted end boundaries to prevent overlap
-    for (int i = 0; i < numThreads; i++)
+    bool refill(uint64_t absPos)
     {
-        streamoff roughEnd = (i == numThreads - 1) ? fileSize : (i + 1) * chunkSize;
+        in.clear();
+        in.seekg(static_cast<streamoff>(absPos));
+        in.read(reinterpret_cast<char *>(buf.data()), static_cast<streamsize>(buf.size()));
+        have = static_cast<size_t>(in.gcount());
+        base = absPos; cur = 0;
+        return have > 0;
+    }
+    bool need(size_t n)
+    {
+        if (have - cur >= n) return true;
+        const uint64_t absPos = base + cur;
+        if (absPos >= fileLen) return false;
+        if (!refill(absPos)) return false;
+        return have - cur >= n;
+    }
+};
 
-        streampos adjustedEnd = static_cast<streampos>(roughEnd);
-
-        if (i != numThreads - 1)
+// Parse an in-memory codeword buffer (used for the query) into logical tokens.
+static bool ticParseTokensFromBytes(const vector<uint8_t> &b, vector<TicLogicalToken> &out)
+{
+    out.clear();
+    size_t i = 0;
+    while (i < b.size())
+    {
+        TicLogicalToken t;
+        t.cstart = i;
+        uint64_t tmp = 0; int cnt = 0;
+        while (true)
         {
-            ifstream tempFile(inputFile, ios::binary);
-            tempFile.seekg(adjustedEnd);
-            char c;
-            while (tempFile.get(c))
+            if (i >= b.size()) return false;
+            const uint8_t x = b[i++];
+            tmp |= (static_cast<uint64_t>(x >> 1) << (7 * cnt));
+            if (x & 1) { if (++cnt > 2) return false; }
+            else break;
+        }
+        const uint64_t ser =
+            tmp + (cnt == 0 ? 0 : (cnt == 1 ? TWO_BYTE_OFFSET : THREE_BYTE_OFFSET));
+        if (ser == NEXT_SPECIAL_CODE)
+        {
+            t.kind = TK_TS;
+            while (true)
             {
-                if (c == 0x02 || c == 0x00)
-                {
-                    adjustedEnd = tempFile.tellg();
-                    break;
-                }
+                if (i >= b.size()) return false;
+                const size_t len = b[i++];
+                if (i + len >= b.size()) return false;
+                t.payload.append(reinterpret_cast<const char *>(&b[i]), len);
+                i += len;
+                if (b[i] != END_SPECIAL_BYTE) return false;
+                i++;
+                if (len != 255) break;              // see TicTokenReader::next
+                if (i < b.size() && b[i] == NEXT_SPECIAL_BYTE_D14) { i++; continue; }
+                break;
             }
+        }
+        else if (ser == SPACE_CODE)        t.kind = TK_SPACE;
+        else if (ser == NEW_LINE_CODE)     t.kind = TK_NL;
+        else if (ser == NEXT_CAPITAL_CODE) t.kind = TK_CAP;
+        else if (ser == END_SPECIAL_CODE)  return false;
+        else { t.kind = TK_DICT; t.serial = ser; }
+        t.cend = i;
+        out.push_back(t);
+    }
+    return true;
+}
 
-            tempFile.close();
+// --------------------------------------------------------------------------
+// Result record. Spans are HALF-OPEN: [t_start, t_end) and [c_start, c_end).
+// Token indices are 0-based; line numbers are 1-BASED.
+// --------------------------------------------------------------------------
+struct TicLookupMatch
+{
+    uint64_t t_start, t_end;
+    uint64_t c_start, c_end;
+    uint64_t start_line, end_line;
+};
+
+// Safe restart checkpoint for lookup. Decompression needed only the offset,
+// because a decompression worker just emits plaintext and concatenation
+// restores order -- it never needs to know where it is. Lookup must report
+// ABSOLUTE token indices and ABSOLUTE line numbers, and both are prefix
+// quantities over the whole stream, so a worker has to be seeded with them.
+struct TicLookupCheckpoint
+{
+    uint64_t compressed_offset;
+    uint64_t token_index;      // logical tokens fully emitted before this offset
+    uint64_t newline_prefix;   // NEWLINE tokens consumed before this offset
+};
+
+static bool ticBuildLookupCheckpoints(const string &path, uint64_t spacing,
+                                      vector<TicLookupCheckpoint> &cps,
+                                      uint64_t &payloadLength)
+{
+    cps.clear();
+    TicTokenReader rd;
+    if (!rd.open(path, 0, false)) { payloadLength = 0; return false; }
+    payloadLength = rd.length();
+    if (payloadLength == 0) return true;
+
+    // A lookup worker needs only a LOGICAL TOKEN BOUNDARY: NEXT_CAPITAL is itself
+    // a token here, so a matcher starting just after one still sees exactly the
+    // same token identities, and a match whose first token is that CAP is owned
+    // by the previous worker (which holds it and has forward halo). The stricter
+    // D-14 restart-atomic rule -- token boundary AND no pending capital -- is
+    // reused anyway so the codebase keeps ONE notion of a safe restart point. It
+    // costs almost nothing: on prose ~95% of token starts still qualify.
+    uint64_t idx = 0, newlines = 0, nextTarget = 0;
+    bool pendingCapital = false;
+    TicLogicalToken t;
+    while (rd.next(t))
+    {
+        if (!pendingCapital && t.cstart >= nextTarget)
+        {
+            cps.push_back({t.cstart, idx, newlines});
+            nextTarget = t.cstart + spacing;
+        }
+        if (t.kind == TK_NL) newlines++;
+        if (t.kind == TK_CAP) pendingCapital = true;
+        else if (t.kind == TK_DICT || t.kind == TK_TS) pendingCapital = false;
+        idx++;
+    }
+    return true;
+}
+
+// --------------------------------------------------------------------------
+// KMP over logical tokens for one worker range.
+//
+// Ownership: a match belongs to the worker whose PRIMARY range contains the
+// first logical token of that match. A worker may read a forward halo of at
+// most m-1 logical tokens past its primary end to finish a match it owns, and
+// must not report a match that starts in that halo.
+// --------------------------------------------------------------------------
+static bool ticLookupRange(const string &path,
+                           uint64_t cBegin, uint64_t cPrimaryEnd,
+                           uint64_t baseTokenIndex, uint64_t baseLine,
+                           const vector<TicLogicalToken> &P,
+                           const vector<size_t> &pi,
+                           const vector<uint64_t> &N,
+                           const vector<uint64_t> &Cb,
+                           vector<TicLookupMatch> &out,
+                           string &err)
+{
+    const size_t m = P.size();
+    if (m == 0) { err = "empty query"; return false; }
+
+    bool wantPayload = false;
+    for (size_t k = 0; k < m; k++) if (P[k].kind == TK_TS) wantPayload = true;
+
+    TicTokenReader rd;
+    if (!rd.open(path, cBegin, wantPayload)) { err = "cannot open input"; return false; }
+
+    vector<uint64_t> ringC(m), ringL(m);       // last m token starts / lines
+    uint64_t idx  = baseTokenIndex;            // index of the token being read
+    uint64_t line = baseLine;                  // line CONTAINING that token
+    size_t   j    = 0;
+    uint64_t haloLeft = UINT64_MAX;
+
+    TicLogicalToken t;
+    while (rd.next(t))
+    {
+        if (t.cstart >= cPrimaryEnd)
+        {
+            if (haloLeft == UINT64_MAX)
+                haloLeft = (m > 0 ? m - 1 : 0);
+            if (haloLeft == 0) break;
+            haloLeft--;
         }
 
-        adjustedEnds[i] = adjustedEnd;
-    }
+        ringC[idx % m] = t.cstart;
+        ringL[idx % m] = line;
 
-    // Second pass: spawn threads with safe, non-overlapping boundaries
-    for (int i = 0; i < numThreads; i++)
+        while (j > 0 && !ticTokenIdentical(t, P[j])) j = pi[j - 1];
+        if (ticTokenIdentical(t, P[j])) j++;
+
+        // NEWLINE belongs to the line it terminates: advance AFTER consuming.
+        if (t.kind == TK_NL) line++;
+        const uint64_t myIdx = idx;
+        idx++;
+
+        if (j == m)
+        {
+            const uint64_t tEnd   = myIdx + 1;
+            const uint64_t tStart = tEnd - m;
+            const uint64_t cEnd   = t.cend;
+
+            // Primary: static per-query prefix tables.
+            const uint64_t cStartF = cEnd - Cb[m];
+            const uint64_t sLineF  = line - N[m];
+            const uint64_t eLineF  = sLineF + N[m - 1];
+            // Self-check against the observed ring buffer. These must agree;
+            // if they ever do not, the formula assumption is wrong and we stop
+            // rather than emit a plausible-looking wrong location.
+            const uint64_t cStartR = ringC[tStart % m];
+            const uint64_t sLineR  = ringL[tStart % m];
+            const uint64_t eLineR  = ringL[(tEnd - 1) % m];
+            if (cStartF != cStartR || sLineF != sLineR || eLineF != eLineR)
+            {
+                err = "internal: lookup location self-check failed at token "
+                    + to_string(tStart);
+                return false;
+            }
+
+            if (cStartR < cPrimaryEnd)          // ownership
+                out.push_back({tStart, tEnd, cStartR, cEnd, sLineR, eLineR});
+
+            j = 0;                              // non-overlapping
+        }
+    }
+    return true;
+}
+
+// --------------------------------------------------------------------------
+// Driver: build the query token sequence, the KMP tables, the safe checkpoint
+// table, partition, run workers, and emit results in stream order.
+// --------------------------------------------------------------------------
+const uint64_t TIC_LOOKUP_CHECKPOINT_SPACING = 64ull * 1024ull;
+
+static bool ticBuildQueryTokens(const string &searchString,
+                                vector<TicLogicalToken> &P, string &err)
+{
+    if (searchString.empty()) { err = "QUERY_EMPTY"; return false; }
+
+    // Encode the query through the SAME encoder path the stream used, then parse
+    // it with the same logical-token parser. That guarantees identical token
+    // identity semantics instead of re-deriving the tokenizer here.
+    //
+    // processLineChar() has no case for 0x0A -- it is only ever handed one line
+    // -- so a multi-line query could not express a NEWLINE token and never
+    // matched. It is shared with -r, which this task must not touch, so the
+    // query is split on newlines here and a NEWLINE token is interleaved
+    // explicitly. Each segment still goes through the unmodified encoder path.
+    vector<uint8_t> q;
+    P.clear();
+    size_t segBegin = 0;
+    while (true)
     {
-        start = (i == 0) ? static_cast<streampos>(0) : adjustedEnds[i - 1];
-        end = adjustedEnds[i];
-
-        threads.emplace_back(Lookup_Function, inputFile, start, end, searchString, i, ref(countMatchVector));
+        const size_t nl = searchString.find('\n', segBegin);
+        const string seg = searchString.substr(segBegin,
+                              nl == string::npos ? string::npos : nl - segBegin);
+        if (!seg.empty())
+        {
+            vector<uint8_t> part = convertSearchStringToCodeWord(processLineChar(seg));
+            vector<TicLogicalToken> partTokens;
+            if (!ticParseTokensFromBytes(part, partTokens))
+            { err = "QUERY_MALFORMED"; return false; }
+            const size_t segBase = q.size();
+            for (auto &t : partTokens)
+            {
+                t.cstart += segBase;   // shift, never overwrite: the byte LENGTH
+                t.cend   += segBase;   // (cend - cstart) feeds the Cb[] table
+                P.push_back(t);
+            }
+            q.insert(q.end(), part.begin(), part.end());
+        }
+        if (nl == string::npos) break;
+        TicLogicalToken nlTok;
+        nlTok.kind = TK_NL;
+        nlTok.cstart = q.size();
+        nlTok.cend = q.size() + 1;
+        P.push_back(nlTok);
+        q.push_back(static_cast<uint8_t>(Shift_Left_with_Zero_Inserted(NEW_LINE_CODE)));
+        segBegin = nl + 1;
     }
+    if (P.empty()) { err = "QUERY_EMPTY"; return false; }
 
-    for (auto &t : threads)
+    // Optional conformance mode for HW/SW comparison. Off by default: software
+    // lookup supports arbitrary practical query lengths. Never truncates.
+    if (const char *mt = getenv("TIC_LOOKUP_MAX_TOKENS"))
     {
-        t.join();
+        const unsigned long lim = strtoul(mt, nullptr, 10);
+        if (lim && P.size() > lim)
+        { err = "QUERY_TOO_LONG: " + to_string(P.size()) + " logical tokens > limit "
+              + to_string(lim); return false; }
     }
-
-    uint64_t sumAllMatch = 0;
-    for (int i = 0; i < numThreads; i++)
+    if (const char *mb = getenv("TIC_LOOKUP_MAX_QUERY_BYTES"))
     {
-        sumAllMatch += countMatchVector[i];
-        // cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
+        const unsigned long lim = strtoul(mb, nullptr, 10);
+        if (lim && q.size() > lim)
+        { err = "QUERY_TOO_LONG: " + to_string(q.size()) + " encoded bytes > limit "
+              + to_string(lim); return false; }
+    }
+    return true;
+}
+
+uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string &outputFile,
+                                           int numThreads, string searchString)
+{
+    if (numThreads < 1) numThreads = 1;
+
+    string err;
+    vector<TicLogicalToken> P;
+    if (!ticBuildQueryTokens(searchString, P, err))
+    { cerr << "Error - lookup: " << err << endl; return -1; }
+    const size_t m = P.size();
+
+    // KMP failure function over LOGICAL TOKENS.
+    vector<size_t> pi(m, 0);
+    for (size_t i = 1, k = 0; i < m; i++)
+    {
+        while (k > 0 && !ticTokenIdentical(P[i], P[k])) k = pi[k - 1];
+        if (ticTokenIdentical(P[i], P[k])) k++;
+        pi[i] = k;
+    }
+    // Static per-query prefix tables.
+    //   N[j]  = NEWLINE tokens in P[0..j-1]        -> start_line = line_after - N[m]
+    //   Cb[j] = encoded bytes of P[0..j-1]         -> c_start    = c_end - Cb[m]
+    vector<uint64_t> N(m + 1, 0), Cb(m + 1, 0);
+    for (size_t j = 0; j < m; j++)
+    {
+        N[j + 1]  = N[j] + (P[j].kind == TK_NL ? 1 : 0);
+        Cb[j + 1] = Cb[j] + (P[j].cend - P[j].cstart);
     }
 
-    // cout << "Total matched values = " << sumAllMatch << endl;
-    //cout << "Lookup operation has been completed." << endl;
+    const auto preScanBegin = steady_clock::now();
+    vector<TicLookupCheckpoint> cps;
+    uint64_t payloadLength = 0;
+    if (!ticBuildLookupCheckpoints(inputFile, TIC_LOOKUP_CHECKPOINT_SPACING, cps, payloadLength))
+    { cerr << "Error - lookup: pre-scan failed on " << inputFile << endl; return -1; }
+    const double preScanMs =
+        duration_cast<duration<double, milli>>(steady_clock::now() - preScanBegin).count();
 
+    vector<TicLookupMatch> all;
+    size_t workerCount = 0;
+
+    if (payloadLength > 0 && !cps.empty())
+    {
+        // Partition on certified checkpoints; coincident targets collapse, so the
+        // actual worker count may be below the request. Never split unsafely.
+        vector<size_t> starts(1, 0);
+        for (int i = 1; i < numThreads; i++)
+        {
+            const uint64_t target =
+                static_cast<uint64_t>((static_cast<unsigned long long>(i) * payloadLength) / numThreads);
+            size_t lo = 0, hi = cps.size();
+            while (lo < hi) { size_t mid = (lo + hi) / 2;
+                              if (cps[mid].compressed_offset <= target) lo = mid + 1; else hi = mid; }
+            if (lo == 0) continue;
+            if (lo - 1 > starts.back()) starts.push_back(lo - 1);
+        }
+        workerCount = starts.size();
+
+        vector<vector<TicLookupMatch>> parts(workerCount);
+        vector<string> errs(workerCount);
+        vector<char> okv(workerCount, 1);
+        vector<thread> ths;
+        for (size_t w = 0; w < workerCount; w++)
+        {
+            const TicLookupCheckpoint &cp = cps[starts[w]];
+            const uint64_t endOff = (w + 1 < workerCount)
+                                  ? cps[starts[w + 1]].compressed_offset : payloadLength;
+            ths.emplace_back([&, w, cp, endOff]() {
+                okv[w] = ticLookupRange(inputFile, cp.compressed_offset, endOff,
+                                        cp.token_index, cp.newline_prefix + 1,
+                                        P, pi, N, Cb, parts[w], errs[w]) ? 1 : 0;
+            });
+        }
+        for (auto &t : ths) t.join();
+        for (size_t w = 0; w < workerCount; w++)
+            if (!okv[w]) { cerr << "Error - lookup worker " << w << ": " << errs[w] << endl; return -1; }
+        for (size_t w = 0; w < workerCount; w++)
+            all.insert(all.end(), parts[w].begin(), parts[w].end());
+    }
+
+    // Results in stream order, one record per match. No deduplication by line.
+    ofstream out(outputFile, ios::out | ios::trunc);
+    if (!out) { cerr << "Error - lookup: creating output file: " << outputFile << endl; return -1; }
+    out << "# start_token_index\tend_token_index\tcompressed_start\tcompressed_end\tstart_line\tend_line\n";
+    for (const auto &r : all)
+        out << r.t_start << '\t' << r.t_end << '\t' << r.c_start << '\t'
+            << r.c_end << '\t' << r.start_line << '\t' << r.end_line << '\n';
+    out.close();
+
+    cout << "MATCHES=" << all.size() << endl;
+    if (const char *v = getenv("TIC_LOOKUP_VERBOSE"))
+        if (v[0] && v[0] != '0')
+            cerr << "[LOOKUP] payload=" << payloadLength
+                 << " query_tokens=" << m
+                 << " checkpoints=" << cps.size()
+                 << " requested_workers=" << numThreads
+                 << " actual_workers=" << workerCount
+                 << " matches=" << all.size()
+                 << " prescan_ms=" << preScanMs << endl;
     return 0;
 }
 
