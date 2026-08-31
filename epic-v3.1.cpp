@@ -385,321 +385,6 @@ int main(int argc, char *argv[])
 
 
 // Version 5
-uint64_t Lookup_and_Replace_Function(
-    const string &inputFileNameBin,
-    streampos start,
-    streampos end,
-    const string &outputFileNameBin,
-    string searchString,
-    string replaceString,
-    int threadIndex,
-    vector<uint64_t> &results)
-{
-    ifstream inFile(inputFileNameBin, ios::binary);
-
-    // =========================================================
-    // Thread-local output file
-    // =========================================================
-    // string threadOutputFile =
-    //     outputFileNameBin + ".thread" + to_string(threadIndex) + ".tmp";
-
-    ofstream outFile(outputFileNameBin, ios::binary);
-
-    if (!inFile || !outFile)
-    {
-        cerr << "Error: Could not open file(s) in thread "
-             << threadIndex << endl;
-        return -1;
-    }
-
-    inFile.seekg(start);
-
-    constexpr size_t bufferSize = 1 << 20; // 1 MB
-    constexpr size_t outputFlushThreshold = 1 << 20; // 1 MB
-
-    vector<char> buffer(bufferSize);
-
-    streamoff currentPos =
-        static_cast<streamoff>(start);
-
-    // =========================================================
-    // Convert search/replace strings to codewords
-    // =========================================================
-    vector<uint8_t> lineCodeWords =
-        convertSearchStringToCodeWord(
-            processLineChar(searchString));
-
-    vector<uint8_t> replaceCodeWords =
-        convertSearchStringToCodeWord(
-            processLineChar(replaceString));
-
-    const uint16_t lineCodeWordsSize =
-        static_cast<uint16_t>(lineCodeWords.size());
-
-    uint64_t matchCount = 0;
-    uint16_t byteIndex = 0;
-    size_t matchStart = 0;
-    bool matchingActive = false;
-
-    // =========================================================
-    // Temporary codeword buffer
-    // =========================================================
-    vector<uint8_t> tmpCodeWord;
-    tmpCodeWord.reserve(32);
-
-    // =========================================================
-    // Buffered output
-    // =========================================================
-    vector<uint8_t> outputBuffer;
-    outputBuffer.reserve(outputFlushThreshold);
-
-    auto flushOutputBuffer = [&]()
-    {
-        if (!outputBuffer.empty())
-        {
-            outFile.write(
-                reinterpret_cast<const char*>(outputBuffer.data()),
-                static_cast<streamsize>(outputBuffer.size()));
-
-            outputBuffer.clear();
-        }
-    };
-
-    auto appendByte = [&](uint8_t value)
-    {
-        outputBuffer.push_back(value);
-
-        if (outputBuffer.size() >= outputFlushThreshold)
-        {
-            flushOutputBuffer();
-        }
-    };
-
-    auto appendVector = [&](const vector<uint8_t> &data)
-    {
-        outputBuffer.insert(
-            outputBuffer.end(),
-            data.begin(),
-            data.end());
-
-        if (outputBuffer.size() >= outputFlushThreshold)
-        {
-            flushOutputBuffer();
-        }
-    };
-
-    auto appendRawBuffer = [&](const char *data, size_t size)
-    {
-        outputBuffer.insert(
-            outputBuffer.end(),
-            reinterpret_cast<const uint8_t*>(data),
-            reinterpret_cast<const uint8_t*>(data) + size);
-
-        if (outputBuffer.size() >= outputFlushThreshold)
-        {
-            flushOutputBuffer();
-        }
-    };
-
-    // =========================================================
-    // Main processing loop
-    // =========================================================
-    while (currentPos < end && inFile)
-    {
-        inFile.clear();
-        inFile.seekg(currentPos);
-
-        size_t bytesToRead =
-            static_cast<size_t>(
-                min<streamoff>(
-                    bufferSize,
-                    end - currentPos));
-
-        inFile.read(buffer.data(), bytesToRead);
-
-        size_t bytesRead =
-            static_cast<size_t>(inFile.gcount());
-
-        if (bytesRead == 0)
-        {
-            break;
-        }
-
-        // =====================================================
-        // Safe-end adjustment
-        // =====================================================
-        if (bytesRead == bufferSize)
-        {
-            size_t safeEnd = bufferSize;
-
-            uint8_t stopSteps = 0;
-
-            for (int idx = static_cast<int>(bufferSize) - 1;
-                 idx >= 0;
-                 --idx)
-            {
-                uint8_t rawByte =
-                    static_cast<uint8_t>(buffer[idx]);
-
-                uint8_t code = rawByte >> 1;
-
-                if (code == SPACE_CODE ||
-                    code == NEW_LINE_CODE)
-                {
-                    stopSteps++;
-
-                    if (stopSteps == BACKWARD_STOP_STEPS)
-                    {
-                        safeEnd =
-                            static_cast<size_t>(idx);
-
-                        break;
-                    }
-                }
-            }
-
-            size_t unreadBytes =
-                bytesRead - safeEnd;
-
-            if (unreadBytes > 0)
-            {
-                inFile.clear();
-
-                inFile.seekg(
-                    -static_cast<streamoff>(unreadBytes),
-                    ios::cur);
-
-                bytesRead = safeEnd;
-            }
-        }
-
-        // =====================================================
-        // Buffer parsing
-        // =====================================================
-        for (size_t i = 0;
-             i < bytesRead && currentPos < end;
-             ++i, ++currentPos)
-        {
-            uint8_t byte =
-                static_cast<uint8_t>(buffer[i]);
-
-            uint16_t nextByteCode =
-                byte & (0x1);
-
-            // =================================================
-            // Special token skip path
-            // =================================================
-            if (lineCodeWordsSize > 0 &&
-                byte == Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE) &&
-                byte != lineCodeWords[byteIndex])
-            {
-                if (i + 1 >= bytesRead)
-                {
-                    break;
-                }
-
-                appendByte(byte);
-
-                ++i;
-                ++currentPos;
-
-                uint8_t specialLength =
-                    static_cast<uint8_t>(buffer[i]);
-
-                appendByte(specialLength);
-
-                size_t payloadStart =
-                    i + 1;
-
-                size_t payloadLength =
-                    static_cast<size_t>(specialLength);
-
-                if (payloadStart + payloadLength > bytesRead)
-                {
-                    break;
-                }
-
-                appendRawBuffer(buffer.data() + payloadStart, payloadLength);
-
-                i += payloadLength;
-                currentPos +=
-                    static_cast<streamoff>(payloadLength);
-
-                byteIndex = 0;
-                tmpCodeWord.clear();
-
-                continue;
-            }
-
-            // =================================================
-            // Matching path
-            // =================================================
-            if (lineCodeWordsSize > 0 && byte == lineCodeWords[byteIndex])
-            {
-                if (byteIndex == 0)
-                {
-                    matchStart = i;
-                    matchingActive = true;
-                }
-
-                byteIndex++;
-
-                // =============================================
-                // Full match found
-                // =============================================
-                if (byteIndex == lineCodeWordsSize)
-                {
-                    appendVector(replaceCodeWords);
-
-                    matchCount++;
-                    byteIndex = 0;
-                    matchingActive = false;
-                }
-            }
-            else
-            {
-                // =============================================
-                // Flush unmatched codeword
-                // =============================================
-                size_t tokenStart = i;
-
-                while (nextByteCode == 1 &&
-                    i + 1 < bytesRead)
-                {
-                    ++i;
-                    ++currentPos;
-
-                    byte =
-                        static_cast<uint8_t>(buffer[i]);
-
-                    nextByteCode =
-                        byte & (0x1);
-                }
-
-                size_t tokenLength =
-                    (i - tokenStart) + 1;
-
-                appendRawBuffer(buffer.data() + tokenStart, tokenLength);
-
-                byteIndex = 0;
-            }
-        }
-    }
-
-    // =========================================================
-    // Final flush
-    // =========================================================
-    flushOutputBuffer();
-
-    inFile.close();
-    outFile.close();
-
-    results[threadIndex] = matchCount;
-
-    return 0;
-}
-
-
 // Version 4 (Stable)
 // uint64_t Lookup_and_Replace_Function(
 //     const string &inputFileNameBin,
@@ -3356,8 +3041,10 @@ struct TicLookupCheckpoint
 
 static bool ticBuildLookupCheckpoints(const string &path, uint64_t spacing,
                                       vector<TicLookupCheckpoint> &cps,
-                                      uint64_t &payloadLength)
+                                      uint64_t &payloadLength,
+                                      uint64_t *parsedEnd)
 {
+    if (parsedEnd) *parsedEnd = 0;
     cps.clear();
     TicTokenReader rd;
     if (!rd.open(path, 0, false)) { payloadLength = 0; return false; }
@@ -3385,6 +3072,7 @@ static bool ticBuildLookupCheckpoints(const string &path, uint64_t spacing,
         if (t.kind == TK_CAP) pendingCapital = true;
         else if (t.kind == TK_DICT || t.kind == TK_TS) pendingCapital = false;
         idx++;
+        if (parsedEnd) *parsedEnd = t.cend;      // last byte the parser accepted
     }
     return true;
 }
@@ -3483,7 +3171,8 @@ static bool ticLookupRange(const string &path,
 const uint64_t TIC_LOOKUP_CHECKPOINT_SPACING = 64ull * 1024ull;
 
 static bool ticBuildQueryTokens(const string &searchString,
-                                vector<TicLogicalToken> &P, string &err)
+                                vector<TicLogicalToken> &P, string &err,
+                                vector<uint8_t> *encodedOut)
 {
     if (searchString.empty()) { err = "QUERY_EMPTY"; return false; }
 
@@ -3529,6 +3218,7 @@ static bool ticBuildQueryTokens(const string &searchString,
         segBegin = nl + 1;
     }
     if (P.empty()) { err = "QUERY_EMPTY"; return false; }
+    if (encodedOut) *encodedOut = q;      // Enc(R) for the splice pass; encoded once
 
     // Optional conformance mode for HW/SW comparison. Off by default: software
     // lookup supports arbitrary practical query lengths. Never truncates.
@@ -3556,7 +3246,7 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
 
     string err;
     vector<TicLogicalToken> P;
-    if (!ticBuildQueryTokens(searchString, P, err))
+    if (!ticBuildQueryTokens(searchString, P, err, nullptr))
     { cerr << "Error - lookup: " << err << endl; return -1; }
     const size_t m = P.size();
 
@@ -3581,7 +3271,7 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
     const auto preScanBegin = steady_clock::now();
     vector<TicLookupCheckpoint> cps;
     uint64_t payloadLength = 0;
-    if (!ticBuildLookupCheckpoints(inputFile, TIC_LOOKUP_CHECKPOINT_SPACING, cps, payloadLength))
+    if (!ticBuildLookupCheckpoints(inputFile, TIC_LOOKUP_CHECKPOINT_SPACING, cps, payloadLength, nullptr))
     { cerr << "Error - lookup: pre-scan failed on " << inputFile << endl; return -1; }
     const double preScanMs =
         duration_cast<duration<double, milli>>(steady_clock::now() - preScanBegin).count();
@@ -3656,82 +3346,274 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
 
 // // Version 1 - Replace
 // // Function to split a binary file into chunks and process them
-uint8_t splitAndProcessBinaryFileForSearchAndReplace(
-    const string &inputFile, 
-    const string &outputFile, 
-    int numThreads, 
-    string searchString, 
-    string replaceString
-)
+// ===========================================================================
+// TIC lookup-and-replace (-r): span-driven splice built on the validated lookup.
+//
+// The previous implementation interleaved matching with output emission, so a
+// matcher error became byte corruption (defect D1: a failed partial match
+// silently deleted its consumed prefix, and a ZERO-match replace destroyed a
+// 2.3 MB stream). That coupling is removed here by construction:
+//
+//     compressed input -> validated lookup matcher -> ordered match spans
+//                      -> splice pass -> compressed output
+//
+// The splice pass performs NO matching. It copies input bytes verbatim and
+// substitutes Enc(R) over each span, so:
+//   * bytes outside a replaced span are copied byte-for-byte, never re-encoded;
+//   * zero matches yields a byte-identical copy of the input -- by construction,
+//     not as an invariant something must maintain.
+// Replacement text is never re-scanned, so there is no cascading replacement.
+// Reported locations are always ORIGINAL INPUT locations.
+// ===========================================================================
+
+struct TicReplaceWorkerResult
 {
-    ifstream inFile(inputFile, ios::binary);
-    if (!inFile)
+    uint64_t input_start = 0, input_end = 0;   // this worker's primary INPUT range
+    vector<uint8_t> output_buffer;             // variable length, concatenated in input order
+    size_t matches_owned = 0;
+};
+
+// Splice one input range using the GLOBAL ordered span list. Overhang from a
+// predecessor's match is resolved from the span list itself -- no messaging.
+static bool ticSpliceRange(const string &path,
+                           uint64_t inStart, uint64_t inEnd,
+                           const vector<TicLookupMatch> &spans,
+                           const vector<uint8_t> &encR,
+                           TicReplaceWorkerResult &res, string &err)
+{
+    ifstream in(path, ios::binary);
+    if (!in) { err = "cannot open input"; return false; }
+    if (inEnd > inStart) res.output_buffer.reserve(static_cast<size_t>(inEnd - inStart));
+
+    // A match owned by an EARLIER range may extend into this one; its bytes were
+    // already consumed there, so start after it.
+    uint64_t cursor = inStart;
+    for (const auto &sp : spans)
     {
-        cerr << "Error - splitAndProcessBinaryFileForSearchAndReplace: opening input file: " << inputFile << endl;
+        if (sp.c_start >= inStart) break;
+        if (sp.c_end > cursor) cursor = sp.c_end;
+    }
+
+    // One buffer per worker, not per span: spans are in increasing order and the
+    // copy is always forward, so the stream stays positioned and no seek is
+    // needed between consecutive copies. Allocating inside the lambda made the
+    // splice cost scale with the MATCH COUNT rather than the byte count.
+    const size_t CH = 1u << 20;
+    vector<char> buf(CH);
+    uint64_t streamPos = UINT64_MAX;          // where `in` is currently positioned
+
+    auto copyRange = [&](uint64_t from, uint64_t to) -> bool
+    {
+        if (to <= from) return true;
+        if (streamPos != from)
+        {
+            in.clear();
+            in.seekg(static_cast<streamoff>(from));
+            streamPos = from;
+        }
+        uint64_t left = to - from;
+        while (left > 0)
+        {
+            const size_t want = static_cast<size_t>(min<uint64_t>(static_cast<uint64_t>(CH), left));
+            in.read(buf.data(), static_cast<streamsize>(want));
+            const size_t got = static_cast<size_t>(in.gcount());
+            if (got == 0) return false;
+            res.output_buffer.insert(res.output_buffer.end(), buf.begin(), buf.begin() + got);
+            left -= got;
+            streamPos += got;
+        }
+        return true;
+    };
+
+    for (const auto &sp : spans)
+    {
+        if (sp.c_start < inStart) continue;      // owned by an earlier range
+        if (sp.c_start >= inEnd)  break;         // owned by a later range
+        if (!copyRange(cursor, sp.c_start)) { err = "short read before span"; return false; }
+        res.output_buffer.insert(res.output_buffer.end(), encR.begin(), encR.end());
+        cursor = sp.c_end;                       // replacement is never re-scanned
+        res.matches_owned++;
+    }
+    // Tail. If a match owned here overhangs inEnd, cursor > inEnd and the next
+    // range starts after it, so nothing is copied twice or lost.
+    if (cursor < inEnd && !copyRange(cursor, inEnd)) { err = "short read in tail"; return false; }
+
+    res.input_start = inStart;
+    res.input_end   = inEnd;
+    return true;
+}
+
+uint8_t splitAndProcessBinaryFileForSearchAndReplace(const string &inputFile, const string &outputFile,
+                                                     int numThreads, string searchString,
+                                                     string replaceString)
+{
+    if (numThreads < 1) numThreads = 1;
+    string err;
+
+    // ---- query and replacement, each encoded exactly once -------------------
+    vector<TicLogicalToken> P;
+    if (!ticBuildQueryTokens(searchString, P, err, nullptr))
+    { cerr << "Error - replace: query: " << err << endl; return -1; }
+    const size_t m = P.size();
+
+    vector<uint8_t> encR;
+    if (replaceString.empty())
+    {
+        encR.clear();                            // deletion is a legal replacement
+    }
+    else
+    {
+        vector<TicLogicalToken> Rtok;
+        if (!ticBuildQueryTokens(replaceString, Rtok, err, &encR))
+        { cerr << "Error - replace: replacement: " << err << endl; return -1; }
+    }
+
+    // ---- KMP tables over the query's logical tokens -------------------------
+    vector<size_t> pi(m, 0);
+    for (size_t i = 1, k = 0; i < m; i++)
+    {
+        while (k > 0 && !ticTokenIdentical(P[i], P[k])) k = pi[k - 1];
+        if (ticTokenIdentical(P[i], P[k])) k++;
+        pi[i] = k;
+    }
+    vector<uint64_t> N(m + 1, 0), Cb(m + 1, 0);
+    for (size_t j = 0; j < m; j++)
+    {
+        N[j + 1]  = N[j] + (P[j].kind == TK_NL ? 1 : 0);
+        Cb[j + 1] = Cb[j] + (P[j].cend - P[j].cstart);
+    }
+
+    // ---- safe restart checkpoints ------------------------------------------
+    const auto preScanBegin = steady_clock::now();
+    vector<TicLookupCheckpoint> cps;
+    uint64_t payloadLength = 0;
+    uint64_t parsedEnd = 0;
+    if (!ticBuildLookupCheckpoints(inputFile, TIC_LOOKUP_CHECKPOINT_SPACING, cps, payloadLength, &parsedEnd))
+    { cerr << "Error - replace: pre-scan failed on " << inputFile << endl; return -1; }
+
+    // A malformed stream must fail LOUDLY. If the parser could not cover the
+    // whole payload, emitting the part it did understand would be silent data
+    // loss -- the exact failure mode this rewrite exists to remove.
+    if (payloadLength > 0 && parsedEnd != payloadLength)
+    {
+        cerr << "Error - replace: MALFORMED_STREAM -- parser stopped at byte " << parsedEnd
+             << " of " << payloadLength << "; refusing to write a truncated output" << endl;
         return -1;
     }
+    const double preScanMs =
+        duration_cast<duration<double, milli>>(steady_clock::now() - preScanBegin).count();
 
-    inFile.seekg(0, ios::end);
-    streampos fileSize = inFile.tellg();
-    streampos chunkSize = fileSize / numThreads;
-
-    vector<thread> threads;
-    vector<string> tempFiles;
-    streampos start=0, end=0;
-
-    vector<uint64_t> countMatchVector(numThreads, 0);
-    vector<char> preservedDelimiters(numThreads); // NEW
-
-    // for (int i = 0; i < numThreads; i++)
-    // {
-    //     cout << "Initial value of count[" << i << "] = " << countMatchVector[i] << endl;
-    // }
-
-    for (int i = 0; i < numThreads; i++)
+    // ---- partition on certified checkpoints (never raw-byte splits) ---------
+    vector<size_t> startIdx(1, 0);
+    if (payloadLength > 0 && !cps.empty())
     {
-               
-        start = end;
-        end = (i == numThreads - 1) ? fileSize : streampos(start + chunkSize);
-
-        // Adjust end position to the nearest newline (0x02) boundary
-        if (i != numThreads - 1)
+        for (int i = 1; i < numThreads; i++)
         {
-            ifstream tempFile(inputFile, ios::binary);
-            tempFile.seekg(end);
-            char c;
-            while (tempFile.get(c))
-            {
-                if (c == 0x02 || c == 0x00)
-                    break; // Stop at newline or space
-            }
-            end = tempFile.tellg();
-            tempFile.close();
+            const uint64_t target =
+                static_cast<uint64_t>((static_cast<unsigned long long>(i) * payloadLength) / numThreads);
+            size_t lo = 0, hi = cps.size();
+            while (lo < hi) { size_t mid = (lo + hi) / 2;
+                              if (cps[mid].compressed_offset <= target) lo = mid + 1; else hi = mid; }
+            if (lo == 0) continue;
+            if (lo - 1 > startIdx.back()) startIdx.push_back(lo - 1);
         }
-
-        string chunkFile = "chunk_" + to_string(i) + ".bin";
-        tempFiles.push_back(chunkFile);
-        threads.emplace_back(Lookup_and_Replace_Function, inputFile, start, end, chunkFile, searchString, replaceString, i, ref(countMatchVector)); // 'i' is the threadIndex
-
-        // cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
     }
+    const size_t workerCount = (payloadLength == 0 || cps.empty()) ? 0 : startIdx.size();
 
-    for (auto &t : threads)
+    // ---- PHASE 1: authoritative match spans, via the validated matcher ------
+    const auto lookupBegin = steady_clock::now();
+    vector<TicLookupMatch> spans;
+    if (workerCount > 0)
     {
-        t.join();
+        vector<vector<TicLookupMatch>> parts(workerCount);
+        vector<string> errs(workerCount);
+        vector<char> okv(workerCount, 1);
+        vector<thread> ths;
+        for (size_t w = 0; w < workerCount; w++)
+        {
+            const TicLookupCheckpoint &cp = cps[startIdx[w]];
+            const uint64_t endOff = (w + 1 < workerCount)
+                                  ? cps[startIdx[w + 1]].compressed_offset : payloadLength;
+            ths.emplace_back([&, w, cp, endOff]() {
+                okv[w] = ticLookupRange(inputFile, cp.compressed_offset, endOff,
+                                        cp.token_index, cp.newline_prefix + 1,
+                                        P, pi, N, Cb, parts[w], errs[w]) ? 1 : 0;
+            });
+        }
+        for (auto &t : ths) t.join();
+        for (size_t w = 0; w < workerCount; w++)
+            if (!okv[w]) { cerr << "Error - replace (match) worker " << w << ": " << errs[w] << endl; return -1; }
+        for (size_t w = 0; w < workerCount; w++)
+            spans.insert(spans.end(), parts[w].begin(), parts[w].end());
     }
+    const double lookupMs =
+        duration_cast<duration<double, milli>>(steady_clock::now() - lookupBegin).count();
 
-    uint64_t sumAllMatch = 0;
-    for (int i = 0; i < numThreads; i++) // summation of all matched values from all threads
+    // ---- PHASE 2: splice. No matching happens here. -------------------------
+    const auto spliceBegin = steady_clock::now();
+    vector<TicReplaceWorkerResult> results(workerCount);
+    if (workerCount > 0)
     {
-        sumAllMatch += countMatchVector[i];
-        // cout << "Matched count in thread " << i << " is: " << countMatchVector[i] << endl;
+        vector<string> errs(workerCount);
+        vector<char> okv(workerCount, 1);
+        vector<thread> ths;
+        for (size_t w = 0; w < workerCount; w++)
+        {
+            const uint64_t s0 = cps[startIdx[w]].compressed_offset;
+            const uint64_t e0 = (w + 1 < workerCount)
+                              ? cps[startIdx[w + 1]].compressed_offset : payloadLength;
+            ths.emplace_back([&, w, s0, e0]() {
+                okv[w] = ticSpliceRange(inputFile, s0, e0, spans, encR, results[w], errs[w]) ? 1 : 0;
+            });
+        }
+        for (auto &t : ths) t.join();
+        for (size_t w = 0; w < workerCount; w++)
+            if (!okv[w]) { cerr << "Error - replace (splice) worker " << w << ": " << errs[w] << endl; return -1; }
     }
+    const double spliceMs =
+        duration_cast<duration<double, milli>>(steady_clock::now() - spliceBegin).count();
 
-    // cout << "Total matched values = " << sumAllMatch << endl;
+    // ---- merge: concatenate per-worker buffers in INPUT order ---------------
+    // No temporary files: per-worker in-memory buffers make the old fixed-name
+    // chunk_<i>.bin scratch files unnecessary, removing that collision hazard.
+    const auto mergeBegin = steady_clock::now();
+    ofstream out(outputFile, ios::out | ios::trunc | ios::binary);
+    if (!out) { cerr << "Error - replace: creating output file: " << outputFile << endl; return -1; }
+    for (const auto &r : results)
+        if (!r.output_buffer.empty())
+            out.write(reinterpret_cast<const char *>(r.output_buffer.data()),
+                      static_cast<streamsize>(r.output_buffer.size()));
+    out.close();
+    const double mergeMs =
+        duration_cast<duration<double, milli>>(steady_clock::now() - mergeBegin).count();
 
-    mergeBinaryFiles(tempFiles, outputFile);
-    // cout << "Lookup completed and merged into " << outputFile << endl;
-    // cout << "Lookup operation has been completed." << endl;
+    cout << "MATCHES=" << spans.size() << endl;
 
+    if (const char *v = getenv("TIC_REPLACE_LOCATIONS"))
+    {
+        // ORIGINAL INPUT locations. They never shift because an earlier
+        // replacement changed the output length.
+        ofstream loc(v, ios::out | ios::trunc);
+        if (loc)
+        {
+            loc << "# start_token_index\tend_token_index\tcompressed_start\tcompressed_end\tstart_line\tend_line\n";
+            for (const auto &sp : spans)
+                loc << sp.t_start << '\t' << sp.t_end << '\t' << sp.c_start << '\t'
+                    << sp.c_end << '\t' << sp.start_line << '\t' << sp.end_line << '\n';
+        }
+    }
+    if (const char *v = getenv("TIC_REPLACE_VERBOSE"))
+        if (v[0] && v[0] != '0')
+            cerr << "[REPLACE] payload=" << payloadLength
+                 << " query_tokens=" << m
+                 << " repl_bytes=" << encR.size()
+                 << " checkpoints=" << cps.size()
+                 << " requested_workers=" << numThreads
+                 << " actual_workers=" << workerCount
+                 << " matches=" << spans.size()
+                 << " prescan_ms=" << preScanMs
+                 << " lookup_ms=" << lookupMs
+                 << " splice_ms=" << spliceMs
+                 << " merge_ms=" << mergeMs << endl;
     return 0;
 }
