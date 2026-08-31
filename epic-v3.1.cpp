@@ -72,6 +72,10 @@ unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
 // unordered_map<uint32_t, string> dictMapCode; // Decompression Hash Table (UNUSED)
 string *dictMapCodeArray = nullptr; // Decompression Consecutive Array of rank of codeWords
 size_t dictMapCodeArraySize = 0;    // allocated length of dictMapCodeArray (bounds checking)
+// Highest serial the loaded dictionary can legally produce. Set by BOTH dictionary
+// builders so the lookup/replace pre-scan can reject an out-of-range rank without
+// performing a dictionary access on the match path.
+uint64_t ticMaxValidSerial = 0;
 
 // Forward declaration: emits a token as one or more legal T_S frames (<=255 B each).
 static void EMIT_SPECIAL_FRAMES(vector<uint8_t> &out, const string &word);
@@ -229,6 +233,8 @@ int main(int argc, char *argv[])
 
     dictMapCodeArray = new string[numberOfWords + 10]; // add an extra spaces
     dictMapCodeArraySize = static_cast<size_t>(numberOfWords + 10);
+    if (numberOfWords + CODE_WORD_OFFSET - 1 > ticMaxValidSerial)
+        ticMaxValidSerial = numberOfWords + CODE_WORD_OFFSET - 1;
 
     // **** TESTs ****
     // int TMP_NUM = ONE_BYTE_BOUND-1;
@@ -605,6 +611,7 @@ uint8_t Build_Dictionary_Table_Compression()
         getline(ss, word, '\n');
 
         dictMapWord[word] = serial;
+        if (serial > ticMaxValidSerial) ticMaxValidSerial = serial;
         serial++;
     }
 
@@ -2936,7 +2943,16 @@ public:
         else if (ser == NEW_LINE_CODE)     t.kind = TK_NL;
         else if (ser == NEXT_CAPITAL_CODE) t.kind = TK_CAP;
         else if (ser == END_SPECIAL_CODE)  return false;   // stray terminator
-        else { t.kind = TK_DICT; t.serial = ser; }
+        else
+        {
+            // A rank the loaded dictionary cannot produce is malformed: the byte
+            // sequence is structurally well formed (the LSB discipline is
+            // satisfied) but semantically impossible. Matching compares encoded
+            // identity and never consults the dictionary, so without this check
+            // such a stream would be searched as if it were valid.
+            if (ticMaxValidSerial != 0 && ser > ticMaxValidSerial) return false;
+            t.kind = TK_DICT; t.serial = ser;
+        }
 
         t.cend = base + cur;
         return true;
@@ -3075,6 +3091,25 @@ static bool ticBuildLookupCheckpoints(const string &path, uint64_t spacing,
         if (parsedEnd) *parsedEnd = t.cend;      // last byte the parser accepted
     }
     return true;
+}
+
+// --------------------------------------------------------------------------
+// Shared malformed-stream gate.
+//
+// The pre-scan parses the WHOLE payload to place safe restart checkpoints. If it
+// could not reach the end, the stream is malformed and no operation may report a
+// normal result over the prefix it happened to understand: a caller cannot tell
+// such a result from a genuine one. Both -l and -r use this single check so they
+// reject exactly the same byte streams.
+// --------------------------------------------------------------------------
+static bool ticStreamFullyParsed(uint64_t payloadLength, uint64_t parsedEnd,
+                                 const char *op)
+{
+    if (payloadLength == 0 || parsedEnd == payloadLength) return true;
+    cerr << "Error - " << op << ": MALFORMED_STREAM -- parser stopped at byte "
+         << parsedEnd << " of " << payloadLength
+         << "; refusing to report a result over a partially parsed stream" << endl;
+    return false;
 }
 
 // --------------------------------------------------------------------------
@@ -3271,8 +3306,14 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
     const auto preScanBegin = steady_clock::now();
     vector<TicLookupCheckpoint> cps;
     uint64_t payloadLength = 0;
-    if (!ticBuildLookupCheckpoints(inputFile, TIC_LOOKUP_CHECKPOINT_SPACING, cps, payloadLength, nullptr))
+    uint64_t parsedEnd = 0;
+    if (!ticBuildLookupCheckpoints(inputFile, TIC_LOOKUP_CHECKPOINT_SPACING, cps, payloadLength, &parsedEnd))
     { cerr << "Error - lookup: pre-scan failed on " << inputFile << endl; return -1; }
+
+    // Reject before any worker runs, any result file is written, and any
+    // MATCHES= line is printed -- a partial match list must never be mistaken
+    // for a valid zero-match answer.
+    if (!ticStreamFullyParsed(payloadLength, parsedEnd, "lookup")) return -1;
     const double preScanMs =
         duration_cast<duration<double, milli>>(steady_clock::now() - preScanBegin).count();
 
@@ -3491,15 +3532,10 @@ uint8_t splitAndProcessBinaryFileForSearchAndReplace(const string &inputFile, co
     if (!ticBuildLookupCheckpoints(inputFile, TIC_LOOKUP_CHECKPOINT_SPACING, cps, payloadLength, &parsedEnd))
     { cerr << "Error - replace: pre-scan failed on " << inputFile << endl; return -1; }
 
-    // A malformed stream must fail LOUDLY. If the parser could not cover the
-    // whole payload, emitting the part it did understand would be silent data
-    // loss -- the exact failure mode this rewrite exists to remove.
-    if (payloadLength > 0 && parsedEnd != payloadLength)
-    {
-        cerr << "Error - replace: MALFORMED_STREAM -- parser stopped at byte " << parsedEnd
-             << " of " << payloadLength << "; refusing to write a truncated output" << endl;
-        return -1;
-    }
+    // Same gate as -l: a malformed stream must fail loudly, before any output
+    // file is created. Emitting the part the parser understood would be silent
+    // data loss -- the failure mode the -r rewrite exists to remove.
+    if (!ticStreamFullyParsed(payloadLength, parsedEnd, "replace")) return -1;
     const double preScanMs =
         duration_cast<duration<double, milli>>(steady_clock::now() - preScanBegin).count();
 
