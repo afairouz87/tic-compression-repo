@@ -66,6 +66,7 @@ Byte-n: last ASCII byte code
 
 #include "epic-v3.1.h"
 #include <unistd.h>   // getpid() for unique temporary file names (D-14)
+#include <atomic>    // ticV2EncoderRejected is written from worker threads
 
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
@@ -77,8 +78,69 @@ size_t dictMapCodeArraySize = 0;    // allocated length of dictMapCodeArray (bou
 // performing a dictionary access on the match path.
 uint64_t ticMaxValidSerial = 0;
 
+// ===========================================================================
+// TIC codec revision.
+//
+// v1 is the completed, publication-ready codec: a T_S payload length is ONE raw
+// byte, and a token longer than 255 bytes is emitted as consecutive frames (the
+// approved T42 fix). v1 behaviour is frozen and must stay byte-identical.
+//
+// v2 encodes a T_S length as a CANONICAL variable-length header -- LSB is the
+// continuation flag, 7-bit groups least-significant first -- so ONE T_S
+// structure is ONE logical token. Spec: ~/Projects/.claude/knowledge/tic-codec-v2.md
+//
+// The revision is never inferred from payload bytes. It is selected explicitly
+// and defaults to v1 so existing scripts and experiments are unaffected.
+// ===========================================================================
+enum TicCodec : uint8_t { TIC_CODEC_V1 = 1, TIC_CODEC_V2 = 2 };
+TicCodec ticCodec = TIC_CODEC_V1;
+
+const uint64_t TIC_MAX_TS_PAYLOAD      = 2097151;  // 2^21 - 1, semantic limit
+const int      TIC_MAX_TS_HEADER_BYTES = 3;        // its encoding consequence
+
+// Canonical v2 length header. Returns false only if L is outside the legal range.
+static bool ticV2EncodeLength(uint64_t L, vector<uint8_t> &out)
+{
+    if (L == 0 || L > TIC_MAX_TS_PAYLOAD) return false;   // L == 0 is invalid in v2
+    vector<uint8_t> groups;
+    uint64_t v = L;
+    do { groups.push_back(static_cast<uint8_t>(v & 0x7F)); v >>= 7; } while (v != 0);
+    for (size_t k = 0; k < groups.size(); k++)
+        out.push_back(static_cast<uint8_t>((groups[k] << 1) | (k + 1 < groups.size() ? 1 : 0)));
+    return true;
+}
+
+// Canonical v2 length header decode.
+//   ok        : header well formed, canonical, within limits, L in range
+//   consumed  : header bytes read
+// Rejects: truncated, more than 3 bytes, non-canonical (zero top group in a
+// multi-byte header), L == 0, L > MAX.
+static bool ticV2DecodeLength(const uint8_t *buf, size_t avail,
+                              uint64_t &L, size_t &consumed)
+{
+    L = 0; consumed = 0;
+    uint64_t acc = 0;
+    for (int i = 0; i < TIC_MAX_TS_HEADER_BYTES; i++)
+    {
+        if (static_cast<size_t>(i) >= avail) return false;      // truncated header
+        const uint8_t b = buf[i];
+        const uint8_t g = static_cast<uint8_t>(b >> 1);
+        acc |= (static_cast<uint64_t>(g) << (7 * i));
+        if ((b & 1) == 0)                                        // final byte
+        {
+            if (i > 0 && g == 0) return false;                   // non-canonical padding
+            if (acc == 0) return false;                          // zero length invalid
+            if (acc > TIC_MAX_TS_PAYLOAD) return false;
+            L = acc; consumed = static_cast<size_t>(i) + 1;
+            return true;
+        }
+    }
+    return false;                                                // needs a 4th byte
+}
+
 // Forward declaration: emits a token as one or more legal T_S frames (<=255 B each).
 static void EMIT_SPECIAL_FRAMES(vector<uint8_t> &out, const string &word);
+std::atomic<bool> ticV2EncoderRejected{false};   // set when a token is outside the v2 legal range (written from worker threads)
 
 // File path of the CSV file
 // string dictFilename = "unigram_freq.csv";
@@ -168,6 +230,23 @@ int main(int argc, char *argv[])
     argv[6]: search string (for -l and -r)
     argv[7]: replace string (for -r)
     */
+
+    // Explicit codec selection, removed from argv before the positional parse so
+    // every existing invocation keeps working unchanged. Default stays v1.
+    {
+        vector<char *> kept;
+        for (int i = 0; i < argc; i++)
+        {
+            const string a = argv[i];
+            if (a == "--codec-v2" || a == "--codec=v2") { ticCodec = TIC_CODEC_V2; continue; }
+            if (a == "--codec-v1" || a == "--codec=v1") { ticCodec = TIC_CODEC_V1; continue; }
+            kept.push_back(argv[i]);
+        }
+        static vector<char *> filtered;
+        filtered = kept;
+        argc = static_cast<int>(filtered.size());
+        argv = filtered.data();
+    }
 
     if (!(argc == 6 || argc == 7 || argc == 8) ||
         !(string(argv[1]) == "-c" || string(argv[1]) == "-d" || string(argv[1]) == "-l" || string(argv[1]) == "-r") ||
@@ -748,7 +827,8 @@ uint8_t Compression_Function(
         return 1;
     }
 
-    constexpr size_t bufferSize = 1 << 20; // 1 MB
+    // v1: exactly 1 MiB, unchanged. v2: must hold one contiguous T_S payload.
+    const size_t bufferSize = (ticCodec == TIC_CODEC_V2 ? static_cast<size_t>(TIC_MAX_TS_PAYLOAD) + 4096 : static_cast<size_t>(1) << 20);
     // constexpr size_t bufferSize = 4096; 
     vector<char> buffer(bufferSize);
     streamoff currentPos = static_cast<streamoff>(start);
@@ -1285,7 +1365,8 @@ uint8_t Decompression_Function(const string &inputFileNameBin, streampos start, 
 
     inFile.seekg(start);
     
-    constexpr size_t bufferSize = 1 << 20; // 1 MB
+    // v1: exactly 1 MiB, unchanged. v2: must hold one contiguous T_S payload.
+    const size_t bufferSize = (ticCodec == TIC_CODEC_V2 ? static_cast<size_t>(TIC_MAX_TS_PAYLOAD) + 4096 : static_cast<size_t>(1) << 20);
     vector<char> buffer(bufferSize);
     streamoff currentPos = static_cast<streamoff>(start);
 
@@ -1504,6 +1585,32 @@ string SPECIAL_CODE_WORD_READER(const char* buffer, size_t& i, size_t bytesRead)
         return "";
     }
 
+    if (ticCodec == TIC_CODEC_V2)
+    {
+        uint64_t L = 0; size_t used = 0;
+        const uint8_t *hdr = reinterpret_cast<const uint8_t *>(buffer) + i + 1;
+        const size_t avail = bytesRead - (i + 1);
+        if (!ticV2DecodeLength(hdr, avail, L, used))
+        {
+            // Truncated headers are recoverable by refilling the buffer; a header
+            // that is complete but illegal is not. Distinguish the two so a real
+            // malformed stream is not retried forever.
+            bool complete = false;
+            for (size_t k = 0; k < avail && k < static_cast<size_t>(TIC_MAX_TS_HEADER_BYTES); k++)
+                if ((hdr[k] & 1) == 0) { complete = true; break; }
+            if (complete || avail >= static_cast<size_t>(TIC_MAX_TS_HEADER_BYTES))
+                cerr << "Error - D(v2): MALFORMED_STREAM -- illegal T_S length header" << endl;
+            return "";
+        }
+        if (i + used + L >= bytesRead) return "";       // payload not fully buffered yet
+        string out;
+        out.reserve(static_cast<size_t>(L));
+        for (uint64_t j = 0; j < L; j++)
+            out += static_cast<char>(buffer[i + used + 1 + j]);
+        i += used + static_cast<size_t>(L);             // leave i on the last payload byte
+        return out;
+    }
+
     uint8_t sizeByte = static_cast<uint8_t>(buffer[++i]); // read size byte
 
     // Step 2: Check if enough bytes remain for the actual data
@@ -1584,6 +1691,24 @@ Generate
 // decode.  For payloads <= 255 bytes this emits exactly the previous bytes.
 static void EMIT_SPECIAL_FRAMES(vector<uint8_t> &out, const string &word)
 {
+    if (ticCodec == TIC_CODEC_V2)
+    {
+        // ONE T_S structure = ONE logical token. The T42 multi-frame form is v1 only.
+        vector<uint8_t> hdr;
+        if (!ticV2EncodeLength(word.size(), hdr))
+        {
+            cerr << "Error - C(v2): T_S payload length " << word.size()
+                 << " is invalid (must be 1.." << TIC_MAX_TS_PAYLOAD << ")" << endl;
+            ticV2EncoderRejected = true;
+            return;
+        }
+        out.push_back(Shift_Left_with_Zero_Inserted(NEXT_SPECIAL_CODE));
+        out.insert(out.end(), hdr.begin(), hdr.end());
+        out.insert(out.end(), word.begin(), word.end());
+        out.push_back(Shift_Left_with_Zero_Inserted(END_SPECIAL_CODE));
+        return;
+    }
+
     const size_t MAX_TS_PAYLOAD = 255;
     size_t off = 0;
     do
@@ -2037,6 +2162,20 @@ uint8_t splitAndProcessTextFile(
     // =====================================================
     // Merge chunks
     // =====================================================
+
+    // A token outside the v2 legal range was refused by EMIT_SPECIAL_FRAMES. That
+    // token is NOT in the temp chunks, so merging would produce a silently
+    // incomplete stream and still report success. Refuse instead: discard the
+    // chunks, write no output, and fail. v1 can never set this flag.
+    if (ticV2EncoderRejected.load())
+    {
+        for (const auto &tempFile : tempFiles)
+            std::remove(tempFile.c_str());
+        cerr << "Error - C(v2): input contains a token that cannot be encoded in "
+                "Codec v2 (payload > " << TIC_MAX_TS_PAYLOAD << " bytes); "
+                "no output written" << endl;
+        return 7;
+    }
 
     mergeBinaryFiles(
         tempFiles,
@@ -2631,7 +2770,7 @@ static bool buildSafeRestartOffsets(const string &inputFile,
 
     // A single T_S frame is at most 1 (length) + 255 (payload) + 1 (END) bytes,
     // so no more than a few hundred contiguous bytes are ever needed at once.
-    const size_t BUFSZ = 1u << 20;
+    const size_t BUFSZ = (ticCodec == TIC_CODEC_V2 ? static_cast<size_t>(TIC_MAX_TS_PAYLOAD) + 4096 : static_cast<size_t>(1) << 20);
     vector<uint8_t> buf(BUFSZ);
     uint64_t base = 0;      // absolute offset of buf[0]
     size_t   have = 0;      // valid bytes in buf
@@ -2698,7 +2837,30 @@ static bool buildSafeRestartOffsets(const string &inputFile,
 
         if (finalSerial == NEXT_SPECIAL_CODE)
         {
-            // consume every consecutive frame: together they are ONE logical token
+            if (ticCodec == TIC_CODEC_V2)
+            {
+                uint64_t L = 0; size_t used = 0;
+                if (!need(1)) { ok = false; }
+                else
+                {
+                    need(static_cast<size_t>(TIC_MAX_TS_HEADER_BYTES));
+                    if (!ticV2DecodeLength(&buf[cur], have - cur, L, used)) ok = false;
+                    else
+                    {
+                        cur += used;
+                        if (!need(static_cast<size_t>(L) + 1)) ok = false;
+                        else
+                        {
+                            cur += static_cast<size_t>(L);
+                            if (buf[cur] != END_SPECIAL_BYTE) ok = false; else cur++;
+                        }
+                    }
+                }
+                if (!ok) break;
+                pendingCapital = false;
+                continue;
+            }
+            // v1: consume every consecutive frame: together they are ONE logical token
             while (true)
             {
                 if (!need(1)) { ok = false; break; }
@@ -2890,7 +3052,7 @@ public:
         const streamoff sz = in.tellg();
         if (sz < 0) return false;
         fileLen = static_cast<uint64_t>(sz);
-        buf.resize(1u << 20);
+        buf.resize((ticCodec == TIC_CODEC_V2 ? static_cast<size_t>(TIC_MAX_TS_PAYLOAD) + 4096 : static_cast<size_t>(1) << 20));
         return refill(startOffset) || startOffset >= fileLen;
     }
     uint64_t length() const { return fileLen; }
@@ -2919,7 +3081,24 @@ public:
         if (ser == NEXT_SPECIAL_CODE)
         {
             t.kind = TK_TS;
-            // every consecutive frame belongs to ONE logical token
+            if (ticCodec == TIC_CODEC_V2)
+            {
+                // v2: ONE canonical variable-length header, ONE payload, ONE token.
+                if (!need(1)) return false;
+                need(static_cast<size_t>(TIC_MAX_TS_HEADER_BYTES));
+                uint64_t L = 0; size_t used = 0;
+                if (!ticV2DecodeLength(&buf[cur], have - cur, L, used)) return false;
+                cur += used;
+                if (!need(static_cast<size_t>(L) + 1)) return false;
+                if (needPayload)
+                    t.payload.append(reinterpret_cast<const char *>(&buf[cur]), static_cast<size_t>(L));
+                cur += static_cast<size_t>(L);
+                if (buf[cur] != END_SPECIAL_BYTE) return false;
+                cur++;
+                t.cend = base + cur;
+                return true;
+            }
+            // v1: every consecutive frame belongs to ONE logical token
             while (true)
             {
                 if (!need(1)) return false;
@@ -3007,6 +3186,20 @@ static bool ticParseTokensFromBytes(const vector<uint8_t> &b, vector<TicLogicalT
         if (ser == NEXT_SPECIAL_CODE)
         {
             t.kind = TK_TS;
+            if (ticCodec == TIC_CODEC_V2)
+            {
+                uint64_t L = 0; size_t used = 0;
+                if (!ticV2DecodeLength(&b[i], b.size() - i, L, used)) return false;
+                i += used;
+                if (i + L >= b.size()) return false;
+                t.payload.append(reinterpret_cast<const char *>(&b[i]), static_cast<size_t>(L));
+                i += static_cast<size_t>(L);
+                if (b[i] != END_SPECIAL_BYTE) return false;
+                i++;
+                t.cend = i;
+                out.push_back(t);
+                continue;
+            }
             while (true)
             {
                 if (i >= b.size()) return false;
