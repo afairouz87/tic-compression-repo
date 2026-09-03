@@ -1176,7 +1176,13 @@ vector<uint8_t> convertStringToCodeWord(vector<string> wordsSet)
             */
             string tmpWord = word;
             tmpWord[0] = tolower(tmpWord[0]); // set the first uppercase character to lowercase character.
-            serial = dictMapWord[tmpWord];    // read the value of the word in the dictionary hash table
+            // P1: this MUST NOT mutate the dictionary. operator[] inserts a
+            // default-constructed 0 for every miss, so out-of-dictionary tokens were
+            // rewriting a map that every compression worker shares, unsynchronised --
+            // causing concurrent rehashing, heap-use-after-free and hangs. find() is
+            // non-mutating and preserves the not-found sentinel exactly: absent => 0.
+            const auto dictIt = dictMapWord.find(tmpWord);
+            serial = (dictIt == dictMapWord.end()) ? 0 : dictIt->second;
 
             if (serial == 0)
             { // NOT FOUND in the hash table - SPECIAL codeWord
