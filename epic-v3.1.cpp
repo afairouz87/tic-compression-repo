@@ -1964,15 +1964,19 @@ uint64_t countLinesInFile(const string &filePath)
 // -------- Compression ----------
 // **** Text to codeWord (Binary) File ****
 
-// Function to merge binary files in order
-void mergeBinaryFiles(const vector<string> &tempFiles, const string &outputFile)
+// Function to merge binary files in order.
+// Returns false on ANY failure. A missing or unreadable chunk must never be
+// skipped: each chunk carries one contiguous range of input lines, so skipping
+// one silently drops that range and yields a truncated stream that still looks
+// like a successful compression.
+bool mergeBinaryFiles(const vector<string> &tempFiles, const string &outputFile)
 {
     lock_guard<mutex> lock(fileMutex);
     ofstream outFile(outputFile, ios::binary);
     if (!outFile)
     {
         cerr << "Error - mergeBinaryFiles: creating merged output file: " << outputFile << endl;
-        return;
+        return false;
     }
 
     for (const auto &tempFile : tempFiles)
@@ -1981,15 +1985,33 @@ void mergeBinaryFiles(const vector<string> &tempFiles, const string &outputFile)
         if (!inFile)
         {
             cerr << "Error - mergeBinaryFiles: opening temp file: " << tempFile << endl;
-            continue;
+            outFile.close();
+            return false;
         }
 
         outFile << inFile.rdbuf(); // Append to final output
+        // Inserting an EMPTY chunk sets failbit even though nothing is wrong:
+        // a worker whose line range produced no bytes is legitimate.
+        if (outFile.fail() && !outFile.bad()) outFile.clear();
+        if (!outFile)
+        {
+            cerr << "Error - mergeBinaryFiles: writing merged output from: " << tempFile << endl;
+            inFile.close(); outFile.close();
+            return false;
+        }
         inFile.close();
         std::remove(tempFile.c_str()); // Delete and remove temporary file
     }
+    outFile.flush();
+    const bool ok = static_cast<bool>(outFile);
     outFile.close();
+    if (!ok)
+    {
+        cerr << "Error - mergeBinaryFiles: finalising merged output file: " << outputFile << endl;
+        return false;
+    }
     // cout << "Binary files merged into " << outputFile << endl;
+    return true;
 }
 
 // Function to split a text file into contiguous chunks and process them
@@ -2049,6 +2071,22 @@ uint8_t splitAndProcessTextFile(
 
     uint64_t currentStartLine = 0;
 
+    // Temporary chunk names must be unique per PROCESS as well as per worker.
+    // The name was previously "chunk_<i>.bin", relative to the working
+    // directory, so two independent compressions sharing a directory used the
+    // SAME files: each truncated the other's chunks and removed them during its
+    // own merge, producing truncated or empty output while still exiting 0.
+    // A live PID is unique among running processes, which is exactly the
+    // property needed here; a stale file left by a crashed process whose PID was
+    // recycled is harmless because the name is removed below and then reopened
+    // truncating. This matches the D-14 decompression convention.
+    const string tempTag = to_string(static_cast<long long>(getpid()));
+
+    // Raised by any worker that cannot open or write its chunk. Without it a
+    // failed worker returned silently and its whole line range vanished from
+    // the merged stream.
+    std::atomic<bool> chunkIoFailed{false};
+
     // =====================================================
     // Launch threads
     // =====================================================
@@ -2066,7 +2104,7 @@ uint8_t splitAndProcessTextFile(
             myStartLine + myLines;
 
         string chunkFile =
-            "chunk_" + to_string(i) + ".bin";
+            "chunk_" + tempTag + "_" + to_string(i) + ".bin";
 
         remove(chunkFile.c_str());
 
@@ -2080,7 +2118,7 @@ uint8_t splitAndProcessTextFile(
         //      << endl;
 
         threads.emplace_back(
-            [=]()
+            [=, &chunkIoFailed]()
             {
                 ifstream in(inputFile);
 
@@ -2091,9 +2129,10 @@ uint8_t splitAndProcessTextFile(
 
                 if (!in || !out)
                 {
-                    cerr << "Error opening chunk files."
-                         << endl;
+                    cerr << "Error opening chunk files: "
+                         << chunkFile << endl;
 
+                    chunkIoFailed.store(true);
                     return;
                 }
 
@@ -2144,6 +2183,12 @@ uint8_t splitAndProcessTextFile(
                 }
 
                 in.close();
+                out.flush();
+                if (!out)
+                {
+                    cerr << "Error writing chunk file: " << chunkFile << endl;
+                    chunkIoFailed.store(true);
+                }
                 out.close();
 
                 // // DEBUG
@@ -2183,10 +2228,27 @@ uint8_t splitAndProcessTextFile(
         return 7;
     }
 
-    mergeBinaryFiles(
-        tempFiles,
-        outputFile
-    );
+    // A worker failed to open or write its chunk. Its line range is therefore
+    // absent, so merging would emit a truncated stream and report success.
+    if (chunkIoFailed.load())
+    {
+        for (const auto &tempFile : tempFiles)
+            std::remove(tempFile.c_str());
+        cerr << "Error - C: a compression worker could not write its temporary "
+                "chunk; no output written" << endl;
+        return 8;
+    }
+
+    if (!mergeBinaryFiles(tempFiles, outputFile))
+    {
+        // Remove only THIS process's own temporary files; never another's.
+        for (const auto &tempFile : tempFiles)
+            std::remove(tempFile.c_str());
+        std::remove(outputFile.c_str());   // no partial output is left behind
+        cerr << "Error - C: merging temporary chunks failed; no output written"
+             << endl;
+        return 9;
+    }
 
     cout << "Encoding completed and merged into "
          << outputFile << endl;

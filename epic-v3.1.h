@@ -98,7 +98,7 @@ void printBinaryFile(const string &filePath);
 //*** Multi Threading Functions ****
 
 // ** Compression **
-void mergeBinaryFiles(const vector<string>& tempFiles, const string& outputFile);
+bool mergeBinaryFiles(const vector<string>& tempFiles, const string& outputFile);
 uint8_t splitAndProcessTextFile(const string& inputFile, const string& outputFile, int numThreads);
 
 // ** Decompression **
