@@ -3578,6 +3578,16 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
     const double preScanMs =
         duration_cast<duration<double, milli>>(steady_clock::now() - preScanBegin).count();
 
+    // scan_ms: the in-process parallel lookup. It starts here, once the
+    // checkpoint table and the compiled query are both available, and stops
+    // once every worker has joined and `all` holds the ordered match list.
+    // It therefore covers partitioning, thread creation, the worker scans and
+    // their per-worker file opens, halo handling, in-memory record creation,
+    // line-number computation, join, and the merge into stream order. It does
+    // NOT cover process startup, dictionary loading, the pre-scan, query
+    // compilation, or writing the TSV. Diagnostic only: nothing below reads it.
+    const auto scanBegin = steady_clock::now();
+
     vector<TicLookupMatch> all;
     size_t workerCount = 0;
 
@@ -3620,6 +3630,9 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
             all.insert(all.end(), parts[w].begin(), parts[w].end());
     }
 
+    const double scanMs =
+        duration_cast<duration<double, milli>>(steady_clock::now() - scanBegin).count();
+
     // Results in stream order, one record per match. No deduplication by line.
     ofstream out(outputFile, ios::out | ios::trunc);
     if (!out) { cerr << "Error - lookup: creating output file: " << outputFile << endl; return -1; }
@@ -3638,7 +3651,8 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
                  << " requested_workers=" << numThreads
                  << " actual_workers=" << workerCount
                  << " matches=" << all.size()
-                 << " prescan_ms=" << preScanMs << endl;
+                 << " prescan_ms=" << preScanMs
+                 << " scan_ms=" << scanMs << endl;
     return 0;
 }
 

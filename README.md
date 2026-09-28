@@ -292,6 +292,30 @@ taking any measurement, so a long run fails immediately rather than halfway thro
 | `python3 run_search_replace.py` | lookup-and-replace, compressed and versus plaintext | `lookup_replace_compressed_results.csv`, `lookup_replace_vs_plaintext_results.csv` |
 | `python3 run_parallel_benchmarks.py --input <file>` | thread scaling at 1, 2, 4, 6 and 8 threads (TIC vs lbzip2) | `parallel_{time,memory,search,replace}_results.csv` + figures |
 
+### Lookup diagnostics
+
+Setting `TIC_LOOKUP_VERBOSE=1` makes `epic -l` print one machine-parseable line to stderr. It does
+not change the result records, the `MATCHES=` line or the exit status.
+
+```
+[LOOKUP] payload=<bytes> query_tokens=<n> checkpoints=<n> requested_workers=<n> \
+         actual_workers=<n> matches=<n> prescan_ms=<float> scan_ms=<float>
+```
+
+`actual_workers` may be below `requested_workers`: partition targets are snapped to certified safe
+checkpoints and coincident targets collapse, so a request is not evidence of what ran.
+
+The two timers measure disjoint phases of the same invocation:
+
+| Field | Interval |
+|---|---|
+| `prescan_ms` | building the safe-parse checkpoint table and validating that the stream parses completely. Serial, so it does not shrink with threads |
+| `scan_ms` | the parallel lookup itself: partitioning, thread creation, the worker scans, halo handling, in-memory record creation, line-number computation, join, and the merge into stream order |
+
+`scan_ms` deliberately excludes process startup, dictionary loading, query compilation, the pre-scan
+and writing the TSV, so it measures the lookup operation rather than the process that hosts it. Both
+are diagnostics: nothing in the lookup path reads either value.
+
 The first four take **no command-line arguments** — their configuration (input files, tools, run
 counts) lives in constants at the top of each script. Only `run_parallel_benchmarks.py` has a CLI:
 
