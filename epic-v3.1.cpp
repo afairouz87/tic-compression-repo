@@ -67,6 +67,9 @@ Byte-n: last ASCII byte code
 #include "epic-v3.1.h"
 #include <unistd.h>   // getpid() for unique temporary file names (D-14)
 #include <atomic>    // ticV2EncoderRejected is written from worker threads
+#include <cstring>   // memcmp. Apple libc++ pulls this in transitively;
+                     // libstdc++ does not, so the aarch64-linux cross
+                     // build fails without it.
 
 // Declare the unordered_map to store the word and serialized integer
 unordered_map<string, uint32_t> dictMapWord; // Compression Hash Table
