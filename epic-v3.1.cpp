@@ -3578,18 +3578,41 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
     const double preScanMs =
         duration_cast<duration<double, milli>>(steady_clock::now() - preScanBegin).count();
 
-    // scan_ms: the in-process parallel lookup. It starts here, once the
-    // checkpoint table and the compiled query are both available, and stops
-    // once every worker has joined and `all` holds the ordered match list.
-    // It therefore covers partitioning, thread creation, the worker scans and
-    // their per-worker file opens, halo handling, in-memory record creation,
+    // scan_ms: the in-process parallel lookup. It starts once the checkpoint
+    // table and the compiled query are both available, and stops once every
+    // worker has joined and the ordered match list is complete. It therefore
+    // covers partitioning, thread creation, the worker scans and their
+    // per-worker file opens, halo handling, in-memory record creation,
     // line-number computation, join, and the merge into stream order. It does
     // NOT cover process startup, dictionary loading, the pre-scan, query
     // compilation, or writing the TSV. Diagnostic only: nothing below reads it.
-    const auto scanBegin = steady_clock::now();
+    //
+    // TIC_LOOKUP_SCAN_ITERATIONS repeats that whole operation N times so a
+    // measurement can be made long enough to be insensitive to very short
+    // scheduling disturbances. DEFAULT 1, which is the single-scan behaviour.
+    // Each iteration builds its own partition, creates and destroys its own
+    // threads and produces its own result list, so nothing is amortised and no
+    // worker pool persists. scan_total_ms is the SUM of the N individually
+    // measured intervals, never one outer interval, so the cross-iteration
+    // agreement check below stays outside the measurement.
+    int scanIterations = 1;
+    if (const char *sit = getenv("TIC_LOOKUP_SCAN_ITERATIONS"))
+    {
+        const int v = atoi(sit);
+        if (v > 0) scanIterations = v;
+    }
 
     vector<TicLookupMatch> all;
     size_t workerCount = 0;
+    double scanMs = 0.0, scanTotalMs = 0.0;
+    bool scanIterationsAgree = true;
+
+    for (int scanIt = 0; scanIt < scanIterations; scanIt++)
+    {
+    vector<TicLookupMatch> cur;
+    size_t curWorkers = 0;
+
+    const auto scanBegin = steady_clock::now();
 
     if (payloadLength > 0 && !cps.empty())
     {
@@ -3606,16 +3629,16 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
             if (lo == 0) continue;
             if (lo - 1 > starts.back()) starts.push_back(lo - 1);
         }
-        workerCount = starts.size();
+        curWorkers = starts.size();
 
-        vector<vector<TicLookupMatch>> parts(workerCount);
-        vector<string> errs(workerCount);
-        vector<char> okv(workerCount, 1);
+        vector<vector<TicLookupMatch>> parts(curWorkers);
+        vector<string> errs(curWorkers);
+        vector<char> okv(curWorkers, 1);
         vector<thread> ths;
-        for (size_t w = 0; w < workerCount; w++)
+        for (size_t w = 0; w < curWorkers; w++)
         {
             const TicLookupCheckpoint &cp = cps[starts[w]];
-            const uint64_t endOff = (w + 1 < workerCount)
+            const uint64_t endOff = (w + 1 < curWorkers)
                                   ? cps[starts[w + 1]].compressed_offset : payloadLength;
             ths.emplace_back([&, w, cp, endOff]() {
                 okv[w] = ticLookupRange(inputFile, cp.compressed_offset, endOff,
@@ -3624,14 +3647,36 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
             });
         }
         for (auto &t : ths) t.join();
-        for (size_t w = 0; w < workerCount; w++)
+        for (size_t w = 0; w < curWorkers; w++)
             if (!okv[w]) { cerr << "Error - lookup worker " << w << ": " << errs[w] << endl; return -1; }
-        for (size_t w = 0; w < workerCount; w++)
-            all.insert(all.end(), parts[w].begin(), parts[w].end());
+        for (size_t w = 0; w < curWorkers; w++)
+            cur.insert(cur.end(), parts[w].begin(), parts[w].end());
+    }
+    const double iterMs =
+        duration_cast<duration<double, milli>>(steady_clock::now() - scanBegin).count();
+
+    // Everything from here to the end of the loop is OUTSIDE the measured
+    // interval, exactly as the equivalent work was outside it for a single scan.
+    scanTotalMs += iterMs;
+    if (scanIt == 0)
+    {
+        scanMs = iterMs;
+        all = std::move(cur);
+        workerCount = curWorkers;
+    }
+    else if (curWorkers != workerCount || cur.size() != all.size() ||
+             (!cur.empty() && memcmp(cur.data(), all.data(),
+                                     cur.size() * sizeof(TicLookupMatch)) != 0))
+    {
+        scanIterationsAgree = false;      // every iteration must be identical
+    }
     }
 
-    const double scanMs =
-        duration_cast<duration<double, milli>>(steady_clock::now() - scanBegin).count();
+    if (!scanIterationsAgree)
+    {
+        cerr << "Error - lookup: repeated scan iterations produced differing results" << endl;
+        return -1;
+    }
 
     // Results in stream order, one record per match. No deduplication by line.
     ofstream out(outputFile, ios::out | ios::trunc);
@@ -3652,7 +3697,9 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
                  << " actual_workers=" << workerCount
                  << " matches=" << all.size()
                  << " prescan_ms=" << preScanMs
-                 << " scan_ms=" << scanMs << endl;
+                 << " scan_ms=" << scanMs
+                 << " scan_total_ms=" << scanTotalMs
+                 << " scan_iterations=" << scanIterations << endl;
     return 0;
 }
 

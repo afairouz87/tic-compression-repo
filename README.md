@@ -299,7 +299,8 @@ not change the result records, the `MATCHES=` line or the exit status.
 
 ```
 [LOOKUP] payload=<bytes> query_tokens=<n> checkpoints=<n> requested_workers=<n> \
-         actual_workers=<n> matches=<n> prescan_ms=<float> scan_ms=<float>
+         actual_workers=<n> matches=<n> prescan_ms=<float> scan_ms=<float> \
+         scan_total_ms=<float> scan_iterations=<n>
 ```
 
 `actual_workers` may be below `requested_workers`: partition targets are snapped to certified safe
@@ -315,6 +316,32 @@ The two timers measure disjoint phases of the same invocation:
 `scan_ms` deliberately excludes process startup, dictionary loading, query compilation, the pre-scan
 and writing the TSV, so it measures the lookup operation rather than the process that hosts it. Both
 are diagnostics: nothing in the lookup path reads either value.
+
+### Repeating the scan for a longer measurement
+
+A single scan of a few megabytes takes only a few milliseconds, which is short enough that one
+operating-system scheduling event can dominate an observation. `TIC_LOOKUP_SCAN_ITERATIONS=N`
+repeats the whole scan `N` times inside one process, so a measurement can be made long enough to be
+insensitive to that. **The default is 1, which is the ordinary single-scan behaviour.**
+
+```sh
+TIC_LOOKUP_VERBOSE=1 TIC_LOOKUP_SCAN_ITERATIONS=32 ./epic -l -t 4 in.tic out.tsv "query"
+```
+
+Each iteration builds its own partition, creates and destroys its own worker threads, and produces
+its own result list, so **nothing is amortised and no worker pool persists across iterations**. This
+repeats the real operation; it is not a faster execution mode.
+
+| Field | Meaning |
+|---|---|
+| `scan_ms` | the **first** iteration, so its meaning is unchanged from a single-scan run |
+| `scan_total_ms` | the **sum of the `N` individually measured intervals**, never one outer interval, so the cross-iteration check below stays outside the measurement |
+| `scan_iterations` | `N` as actually used |
+
+Every iteration must produce an identical result. The iterations are compared record for record
+after the timer stops, and a disagreement makes the run fail with
+`repeated scan iterations produced differing results` rather than publishing any output. The TSV
+written is the first iteration's, which the comparison has proved equal to all the others.
 
 The first four take **no command-line arguments** — their configuration (input files, tools, run
 counts) lives in constants at the top of each script. Only `run_parallel_benchmarks.py` has a CLI:
