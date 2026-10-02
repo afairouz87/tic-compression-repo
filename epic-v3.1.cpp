@@ -67,7 +67,11 @@ Byte-n: last ASCII byte code
 #include "epic-v3.1.h"
 #include <unistd.h>   // getpid() for unique temporary file names (D-14)
 #include <atomic>    // ticV2EncoderRejected is written from worker threads
-#include <cstring>   // memcmp. Apple libc++ pulls this in transitively;
+#include <cstring>
+#if defined(__linux__)
+#include <pthread.h>    // pthread_{get,set}affinity_np, for deterministic
+#include <sched.h>      // cpu_set_t / CPU_SET -- worker-to-core assignment.
+#endif   // memcmp. Apple libc++ pulls this in transitively;
                      // libstdc++ does not, so the aarch64-linux cross
                      // build fails without it.
 
@@ -3538,6 +3542,72 @@ static bool ticBuildQueryTokens(const string &searchString,
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// gem5 instrumentation. Measurement only: nothing here can change which
+// matches are found, only where and when they are computed.
+//
+// ROI markers
+//   gem5's arm64 m5ops are the instruction `.long 0xff000110 | (func << 16)`
+//   (gem5 util/m5/src/abi/arm64/m5op.S). Inlining that encoding avoids linking
+//   libm5 into the static aarch64 build. x0/x1 are the op's arguments and MUST
+//   be zeroed: m5_reset_stats(delay, period) with a stale non-zero delay would
+//   schedule the reset for a later tick instead of performing it now.
+//
+//   The markers sit on the scan_ms boundary and nowhere else, so the modeled
+//   ROI is the SAME region Campaign v2 measured rather than an approximation
+//   of it: reset immediately after the scan clock is read and before partition
+//   construction, dump immediately after the ordered merge and before the scan
+//   clock is read again. The only work inside scan_ms but outside the ROI is
+//   those two clock reads, which are instrumentation, not lookup.
+//
+// Both are off unless explicitly requested, so an ordinary run of this binary
+// -- native or in-guest -- executes exactly what the uninstrumented binary did.
+#if defined(__aarch64__)
+static inline void ticM5ResetStats()
+{ __asm__ __volatile__("mov x0, #0\n\tmov x1, #0\n\t.long 0xff400110"
+                       ::: "x0", "x1", "memory"); }
+static inline void ticM5DumpStats()
+{ __asm__ __volatile__("mov x0, #0\n\tmov x1, #0\n\t.long 0xff410110"
+                       ::: "x0", "x1", "memory"); }
+#else
+static inline void ticM5ResetStats() {}
+static inline void ticM5DumpStats() {}
+#endif
+
+static bool ticEnvOn(const char *name)
+{ const char *v = getenv(name); return v && v[0] && v[0] != '0'; }
+
+// Deterministic worker-to-core assignment.
+//   std::thread workers inherit the creating thread's CPU mask, so
+//   `taskset -c 0-(N-1)` already confines them to N cores -- but it leaves
+//   placement to the guest scheduler, which may co-locate two workers on one
+//   core and idle another. The research question is about N modeled cores,
+//   not about scheduler placement, so worker w is pinned to the w-th CPU of
+//   the inherited mask. The mask is read rather than assumed, so this composes
+//   with taskset instead of overriding it. Off unless TIC_LOOKUP_PIN_WORKERS
+//   is set; a failure is reported, never silently ignored.
+#if defined(__linux__)
+static bool ticPinWorkerToNthAllowedCpu(size_t w)
+{
+    cpu_set_t allowed;
+    CPU_ZERO(&allowed);
+    if (pthread_getaffinity_np(pthread_self(), sizeof(allowed), &allowed) != 0) return false;
+    int seen = -1;
+    for (int c = 0; c < CPU_SETSIZE; c++)
+    {
+        if (!CPU_ISSET(c, &allowed)) continue;
+        if (static_cast<size_t>(++seen) != w) continue;
+        cpu_set_t one;
+        CPU_ZERO(&one);
+        CPU_SET(c, &one);
+        return pthread_setaffinity_np(pthread_self(), sizeof(one), &one) == 0;
+    }
+    return false;   // fewer allowed CPUs than workers
+}
+#else
+static bool ticPinWorkerToNthAllowedCpu(size_t) { return false; }
+#endif
+
 uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string &outputFile,
                                            int numThreads, string searchString)
 {
@@ -3605,6 +3675,11 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
         if (v > 0) scanIterations = v;
     }
 
+    // Read once, outside the measured region, so no getenv call is timed.
+    const bool roiOn      = ticEnvOn("TIC_GEM5_ROI");
+    const bool pinWorkers = ticEnvOn("TIC_LOOKUP_PIN_WORKERS");
+    volatile int pinFailed = 0;
+
     vector<TicLookupMatch> all;
     size_t workerCount = 0;
     double scanMs = 0.0, scanTotalMs = 0.0;
@@ -3616,6 +3691,7 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
     size_t curWorkers = 0;
 
     const auto scanBegin = steady_clock::now();
+    if (roiOn) ticM5ResetStats();          // ROI START -- see note above
 
     if (payloadLength > 0 && !cps.empty())
     {
@@ -3644,6 +3720,7 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
             const uint64_t endOff = (w + 1 < curWorkers)
                                   ? cps[starts[w + 1]].compressed_offset : payloadLength;
             ths.emplace_back([&, w, cp, endOff]() {
+                if (pinWorkers && !ticPinWorkerToNthAllowedCpu(w)) pinFailed = 1;
                 okv[w] = ticLookupRange(inputFile, cp.compressed_offset, endOff,
                                         cp.token_index, cp.newline_prefix + 1,
                                         P, pi, N, Cb, parts[w], errs[w]) ? 1 : 0;
@@ -3655,6 +3732,7 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
         for (size_t w = 0; w < curWorkers; w++)
             cur.insert(cur.end(), parts[w].begin(), parts[w].end());
     }
+    if (roiOn) ticM5DumpStats();           // ROI END -- see note above
     const double iterMs =
         duration_cast<duration<double, milli>>(steady_clock::now() - scanBegin).count();
 
@@ -3689,6 +3767,9 @@ uint8_t splitAndProcessBinaryFileForSearch(const string &inputFile, const string
         out << r.t_start << '\t' << r.t_end << '\t' << r.c_start << '\t'
             << r.c_end << '\t' << r.start_line << '\t' << r.end_line << '\n';
     out.close();
+
+    if (pinWorkers && pinFailed)
+    { cerr << "Error - lookup: worker CPU pinning failed" << endl; return -1; }
 
     cout << "MATCHES=" << all.size() << endl;
     if (const char *v = getenv("TIC_LOOKUP_VERBOSE"))
